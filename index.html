@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Gorilla Tag Metadata Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1724; --panel:#0b1220; --muted:#9aa6bf; --accent:#7dd3fc; --accent-2:#60a5fa;
+    --glass: rgba(255,255,255,0.03);
+  }
+  html,body{height:100%; margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  body{background:
+    radial-gradient(800px 400px at 10% 10%, rgba(96,165,250,0.06), transparent 8%),
+    radial-gradient(600px 300px at 90% 90%, rgba(125,211,252,0.04), transparent 6%),
+    var(--bg);
+    color:#e6eef8; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:980px;margin:28px auto;padding:28px;border-radius:14px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow: 0 6px 30px rgba(2,6,23,0.6);}
+  header{display:flex;gap:16px;align-items:center; margin-bottom:14px;}
+  header h1{font-size:20px;margin:0}
+  header p{margin:0;color:var(--muted);font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr 420px;gap:18px}
+  .panel{background:var(--panel);border-radius:10px;padding:14px;}
+  textarea{width:100%;height:160px;background:transparent;color:inherit;border:1px dashed rgba(255,255,255,0.04);padding:12px;border-radius:8px;font-family:monospace; font-size:13px; resize:vertical}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  select,input[type="text"]{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;font-size:13px}
+  button{background:linear-gradient(180deg,var(--accent),var(--accent-2));border:none;padding:8px 12px;border-radius:10px;color:#042233;font-weight:600;cursor:pointer}
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
+  .table{width:100%;border-collapse:collapse;margin-top:8px;}
+  .table th,.table td{padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px}
+  .table th{color:var(--muted);font-weight:600}
+  .small{font-size:12px;color:var(--muted)}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .log{margin-top:8px;padding:8px;border-radius:8px;background:var(--glass);color:var(--muted);font-size:13px;min-height:36px}
+  .footer{margin-top:14px;color:var(--muted);font-size:13px}
+  .muted{color:var(--muted)}
+  .btn-danger{background:linear-gradient(180deg,#fb7185,#f43f5e);color:white}
+  input[type="file"]{display:none}
+  .filelabel{display:inline-flex;align-items:center;gap:8px;padding:8px;border-radius:8px;border:1px dashed rgba(255,255,255,0.04);cursor:pointer}
+  .top-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .preview{white-space:pre-wrap;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;margin-top:8px;font-family:monospace;font-size:13px}
+  @media (max-width:980px){ .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Gorilla Tag — Metadata String Editor</h1>
+        <p>Edit and convert metadata strings client-side — JSON, URL-encodings, and key=value lists.</p>
+      </div>
+      <div style="margin-left:auto" class="small muted">Client-side only • No server</div>
+    </header>
+
+    <div class="grid">
+      <!-- left: input & parse -->
+      <div>
+        <div class="panel">
+          <div class="top-controls">
+            <label class="filelabel" for="fileInput">📁 Load file<input id="fileInput" type="file" accept=".txt,.json,.cfg,.meta" /></label>
+            <button id="btnPaste" class="secondary">📋 Paste from clipboard</button>
+            <button id="btnClear" class="secondary">✖ Clear</button>
+            <div style="margin-left:auto" class="small muted">Output is local — use Copy or Download</div>
+          </div>
+
+          <label class="small muted">Input metadata string</label>
+          <textarea id="txtInput" placeholder='Paste metadata string here (JSON, query string, or key=value pairs)'></textarea>
+
+          <div class="row">
+            <label class="small muted">Auto-parse as</label>
+            <select id="selMode">
+              <option value="auto">Auto-detect</option>
+              <option value="json">JSON</option>
+              <option value="query">URL Query / form-encoded</option>
+              <option value="pairs">key=value (delimiter)</option>
+            </select>
+            <input id="txtDelimiter" type="text" value=";" style="width:84px" title="Delimiter for pairs (default ;)"/>
+            <button id="btnParse" style="margin-left:auto">Parse</button>
+          </div>
+
+          <div class="row">
+            <label class="small muted">When serializing</label>
+            <select id="selOutMode">
+              <option value="pairs">key=value (delimiter)</option>
+              <option value="query">URL Query / form-encoded</option>
+              <option value="json">JSON (pretty)</option>
+            </select>
+            <input id="txtOutDelim" type="text" value=";" style="width:84px" />
+            <label class="small muted" style="margin-left:auto"><input id="chkSave" type="checkbox" /> Save in browser</label>
+          </div>
+
+          <div style="margin-top:8px" class="actions">
+            <button id="btnSerialize">Serialize → Output</button>
+            <button id="btnCopy" class="secondary">Copy</button>
+            <button id="btnDownload" class="secondary">Download .txt</button>
+            <button id="btnRestore" class="secondary">Restore saved</button>
+          </div>
+
+          <div class="log" id="log">Ready.</div>
+        </div>
+
+        <div class="footer small muted">
+          Tip: Use "Auto-detect" for mixed formats. This editor runs entirely in your browser; nothing leaves your device.
+        </div>
+      </div>
+
+      <!-- right: parsed table & preview -->
+      <div>
+        <div class="panel">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <h3 style="margin:0;font-size:15px">Parsed key/value editor</h3>
+            <div style="margin-left:auto" class="small muted">Edit values inline — add rows & remove</div>
+          </div>
+
+          <table class="table" id="kvTable">
+            <thead><tr><th>Key</th><th>Value</th><th style="width:72px">Actions</th></tr></thead>
+            <tbody id="kvBody"></tbody>
+          </table>
+
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <input id="newKey" placeholder="key" />
+            <input id="newVal" placeholder="value" />
+            <button id="btnAddRow">Add</button>
+            <button id="btnClearRows" class="secondary">Clear all</button>
+          </div>
+
+          <div style="margin-top:12px">
+            <label class="small muted">Output preview</label>
+            <div id="preview" class="preview"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* Metadata editor - client only */
+const txtInput = document.getElementById('txtInput');
+const btnParse = document.getElementById('btnParse');
+const selMode = document.getElementById('selMode');
+const txtDelimiter = document.getElementById('txtDelimiter');
+const txtOutDelim = document.getElementById('txtOutDelim');
+const selOutMode = document.getElementById('selOutMode');
+const kvBody = document.getElementById('kvBody');
+const preview = document.getElementById('preview');
+const logEl = document.getElementById('log');
+const btnCopy = document.getElementById('btnCopy');
+const btnSerialize = document.getElementById('btnSerialize');
+const btnDownload = document.getElementById('btnDownload');
+const btnAddRow = document.getElementById('btnAddRow');
+const newKey = document.getElementById('newKey');
+const newVal = document.getElementById('newVal');
+const btnClearRows = document.getElementById('btnClearRows');
+const chkSave = document.getElementById('chkSave');
+const btnRestore = document.getElementById('btnRestore');
+const btnPaste = document.getElementById('btnPaste');
+const fileInput = document.getElementById('fileInput');
+const btnClear = document.getElementById('btnClear');
+
+let kv = {}; // current key-value map
+
+function log(msg) {
+  logEl.textContent = msg;
+}
+function setKV(obj) {
+  kv = Object.assign({}, obj);
+  renderTable();
+  updatePreview();
+}
+function renderTable() {
+  kvBody.innerHTML = '';
+  const keys = Object.keys(kv);
+  if (keys.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 3; td.className='small muted'; td.textContent = 'No keys — parse input or add a new row.';
+    tr.appendChild(td); kvBody.appendChild(tr); return;
+  }
+  keys.forEach(k=>{
+    const v = kv[k];
+    const tr = document.createElement('tr');
+    const tdk = document.createElement('td');
+    const inpK = document.createElement('input');
+    inpK.value = k; inpK.style.width='100%';
+    inpK.addEventListener('change', ()=> {
+      const newk = inpK.value;
+      if (newk === '') { log('Key cannot be empty'); inpK.value = k; return; }
+      if (newk !== k) { delete kv[k]; kv[newk] = v; renderTable(); updatePreview(); }
+    });
+    tdk.appendChild(inpK);
+
+    const tdv = document.createElement('td');
+    const inpV = document.createElement('input');
+    inpV.value = v; inpV.style.width='100%';
+    inpV.addEventListener('input', ()=> { kv[inpK.value] = inpV.value; updatePreview(); });
+    tdv.appendChild(inpV);
+
+    const tda = document.createElement('td');
+    const del = document.createElement('button');
+    del.textContent = 'Remove'; del.className='secondary';
+    del.addEventListener('click', ()=> { delete kv[inpK.value]; renderTable(); updatePreview(); });
+    tda.appendChild(del);
+
+    tr.appendChild(tdk); tr.appendChild(tdv); tr.appendChild(tda);
+    kvBody.appendChild(tr);
+  });
+}
+
+function updatePreview() {
+  const outMode = selOutMode.value;
+  const delim = txtOutDelim.value || ';';
+  let out = '';
+  if (outMode === 'json') {
+    out = JSON.stringify(kv, null, 2);
+  } else if (outMode === 'query') {
+    const usp = new URLSearchParams();
+    Object.keys(kv).forEach(k => usp.append(k, kv[k]));
+    out = usp.toString();
+  } else {
+    const parts = [];
+    Object.keys(kv).forEach(k => {
+      parts.push(`${k}=${kv[k]}`);
+    });
+    out = parts.join(delim);
+  }
+  preview.textContent = out;
+  if (chkSave.checked) localStorage.setItem('meta-editor-saved', out);
+}
+
+function serializeToString() {
+  updatePreview(); return preview.textContent;
+}
+
+function parseAuto(txt) {
+  // Try JSON
+  txt = txt.trim();
+  if (!txt) return {};
+  try { const o = JSON.parse(txt); if (o && typeof o === 'object') { return flattenObject(o); } } catch(e){}
+  // Try URL query
+  if (txt.includes('=') && (txt.includes('&') || txt.includes('%') || txt.includes('+'))) {
+    try {
+      const usp = new URLSearchParams(txt);
+      const res = {}; for (const [k,v] of usp.entries()) { res[k]=v; } if (Object.keys(res).length) return res;
+    } catch(e){}
+  }
+  // Try key=value with common delimiters
+  const delimCandidates = [';', ',', '|', '\n'];
+  for (const d of delimCandidates) {
+    if (txt.includes(d)) {
+      const res = parsePairs(txt, d);
+      if (Object.keys(res).length) return res;
+    }
+  }
+  // fallback: try single pair
+  if (txt.includes('=')) {
+    const p = parsePairs(txt, ';');
+    if (Object.keys(p).length) return p;
+  }
+  // fallback generic: attempt simple key:value JSON-ish
+  return { data: txt };
+}
+
+function parsePairs(txt, delim) {
+  const res = {};
+  const parts = txt.split(delim);
+  for (let p of parts) {
+    p = p.trim();
+    if (!p) continue;
+    const eq = p.indexOf('=');
+    if (eq === -1) continue;
+    const k = p.slice(0,eq).trim();
+    const v = p.slice(eq+1).trim();
+    if (k) res[k]=decodeIfNeeded(v);
+  }
+  return res;
+}
+
+function decodeIfNeeded(v) {
+  // decode percent-encoding if present
+  try { if (v.includes('%')) return decodeURIComponent(v); } catch(e){}
+  return v;
+}
+
+function flattenObject(obj) {
+  // Flatten simple nested objects into top-level keys using dot notation.
+  const out = {};
+  function walk(prefix, node) {
+    if (node && typeof node === 'object' && !Array.isArray(node)) {
+      for (const k in node) walk(prefix? prefix + '.' + k : k, node[k]);
+    } else {
+      out[prefix] = (node === null || node === undefined) ? '' : String(node);
+    }
+  }
+  walk('', obj);
+  return out;
+}
+
+/* UI wiring */
+btnParse.addEventListener('click', ()=> {
+  const mode = selMode.value;
+  const raw = txtInput.value;
+  if (!raw) { log('Input empty'); return; }
+  if (mode === 'json') {
+    try { const o = JSON.parse(raw); setKV(flattenObject(o)); log('Parsed JSON'); }
+    catch(e){ log('JSON parse error: '+ e.message); }
+    return;
+  }
+  if (mode === 'query') {
+    try {
+      const usp = new URLSearchParams(raw);
+      const obj = {}; for (const [k,v] of usp.entries()) obj[k]=v;
+      setKV(obj); log('Parsed query string');
+    } catch(e){ log('Query parse error'); }
+    return;
+  }
+  if (mode === 'pairs') {
+    const d = txtDelimiter.value || ';';
+    const res = parsePairs(raw, d);
+    setKV(res); log('Parsed key=value pairs with delimiter "'+d+'"');
+    return;
+  }
+  // auto:
+  const auto = parseAuto(raw);
+  setKV(auto);
+  log('Auto-detected and parsed input');
+});
+
+btnSerialize.addEventListener('click', ()=> {
+  const out = serializeToString();
+  log('Serialized output (preview updated).');
+});
+
+btnCopy.addEventListener('click', async ()=> {
+  const txt = serializeToString();
+  try {
+    await navigator.clipboard.writeText(txt);
+    log('Copied output to clipboard.');
+  } catch(e) {
+    // fallback
+    const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); log('Copied (fallback)'); } catch(e2) { log('Copy failed'); }
+    ta.remove();
+  }
+});
+
+btnDownload.addEventListener('click', ()=> {
+  const txt = serializeToString();
+  const blob = new Blob([txt], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'metadata.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  log('Downloaded metadata.txt');
+});
+
+btnAddRow.addEventListener('click', ()=> {
+  const k = newKey.value.trim(); const v = newVal.value;
+  if (!k) { log('Key required'); return; }
+  kv[k] = v; newKey.value=''; newVal.value=''; renderTable(); updatePreview(); log('Added row');
+});
+btnClearRows.addEventListener('click', ()=> { kv={}; renderTable(); updatePreview(); log('Cleared all rows'); });
+btnRestore.addEventListener('click', ()=> {
+  const saved = localStorage.getItem('meta-editor-saved');
+  if (!saved) { log('No saved value'); return; }
+  txtInput.value = saved; selMode.value='auto'; btnParse.click(); log('Restored saved value into input');
+});
+btnPaste.addEventListener('click', async ()=> {
+  try {
+    const txt = await navigator.clipboard.readText();
+    if (txt) { txtInput.value = txt; log('Pasted from clipboard.'); }
+    else log('Clipboard empty');
+  } catch(e) { log('Clipboard access denied'); }
+});
+fileInput.addEventListener('change', (ev)=> {
+  const f = ev.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = (e)=> { txtInput.value = String(e.target.result); log('Loaded file to input.'); };
+  r.readAsText(f);
+});
+btnClear.addEventListener('click', ()=> { txtInput.value=''; log('Cleared input'); });
+
+/* init */
+(function init(){
+  // experiment: load saved raw text if present
+  const last = localStorage.getItem('meta-editor-raw');
+  if (last) { txtInput.value = last; log('Loaded previous raw input (local)'); }
+  // autosave raw input occasionally
+  setInterval(()=> { localStorage.setItem('meta-editor-raw', txtInput.value); }, 2500);
+  // render empty
+  setKV({});
+})();
+</script>
+</body>
+</html>
