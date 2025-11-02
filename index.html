@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Metadata.dat Binary Inspector & Editor</title>
+<title>Metadata.dat Binary Inspector & Editor — Optimized</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#0f1724;--panel:#0b1220;--muted:#9aa6bf;--accent:#7dd3fc}
   body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#071325,#071827);color:#e6eef8}
-  .wrap{max-width:1100px;margin:24px auto;padding:18px;border-radius:12px;background:rgba(255,255,255,0.02)}
+  .wrap{max-width:1100px;margin:20px auto;padding:16px;border-radius:12px;background:rgba(255,255,255,0.02)}
   header{display:flex;gap:12px;align-items:center}
   h1{margin:0;font-size:18px}
   .grid{display:grid;grid-template-columns:380px 1fr;gap:14px;margin-top:14px}
@@ -16,8 +16,8 @@
   .muted{color:var(--muted);font-size:13px}
   input, select, textarea, button{font:inherit}
   .filelabel{display:inline-flex;align-items:center;padding:8px;border-radius:8px;border:1px dashed rgba(255,255,255,0.04);cursor:pointer;background:transparent}
-  textarea{width:100%;height:180px;background:transparent;color:inherit;border:1px dashed rgba(255,255,255,0.04);padding:10px;border-radius:8px;font-family:monospace}
-  .list{height:420px;overflow:auto;margin-top:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);padding:8px;background:rgba(255,255,255,0.01)}
+  textarea{width:100%;height:190px;background:transparent;color:inherit;border:1px dashed rgba(255,255,255,0.04);padding:10px;border-radius:8px;font-family:monospace;resize:vertical}
+  .list{height:420px;overflow:auto;margin-top:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.02);padding:6px;background:rgba(255,255,255,0.01)}
   .seg{padding:8px;border-radius:6px;margin-bottom:6px;background:rgba(255,255,255,0.01);cursor:pointer}
   .seg:hover{background:rgba(255,255,255,0.02)}
   .seg.sel{outline:2px solid rgba(125,211,252,0.12);background:linear-gradient(90deg, rgba(125,211,252,0.03), rgba(96,165,250,0.02))}
@@ -25,9 +25,12 @@
   .btn{padding:8px 12px;border-radius:8px;border:none;background:linear-gradient(180deg,var(--accent),#60a5fa);color:#042233;font-weight:600;cursor:pointer}
   .btn.alt{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
   .small{font-size:13px}
-  .preview{white-space:pre-wrap;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;margin-top:8px;font-family:monospace}
+  .preview{white-space:pre-wrap;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;margin-top:8px;font-family:monospace;max-height:240px;overflow:auto}
   .footer{margin-top:12px;color:var(--muted);font-size:13px}
-  @media (max-width:980px){ .grid{grid-template-columns:1fr} }
+  .top-row{display:flex;gap:8px;align-items:center}
+  .search{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  .label-small{font-size:12px;color:var(--muted)}
+  @media (max-width:980px){ .grid{grid-template-columns:1fr} .list{height:260px} .preview{max-height:160px} }
 </style>
 </head>
 <body>
@@ -35,74 +38,84 @@
     <header>
       <div>
         <h1>Metadata.dat Binary Inspector & Editor</h1>
-        <div class="muted">Load your <code>global-metadata.dat</code>, select an embedded metadata segment, edit, and download patched file — client-side only.</div>
+        <div class="muted">Load <code>global-metadata.dat</code>, edit embedded metadata, patch & download — client-side only.</div>
       </div>
       <div style="margin-left:auto" class="muted small">Local only • No uploads</div>
     </header>
 
     <div class="grid">
       <div class="panel">
-        <label class="filelabel">📁 Load file <input id="fileInput" type="file" accept="*" style="display:none"/></label>
-        <span style="margin-left:12px" id="fileInfo" class="muted small">No file loaded</span>
-
-        <div style="margin-top:12px">
-          <div class="muted small">Detected segments (click to inspect)</div>
-          <div id="segList" class="list"></div>
+        <div class="top-row" style="margin-bottom:10px">
+          <label class="filelabel">📁 Load file <input id="fileInput" type="file" accept="*" style="display:none"/></label>
+          <span id="fileInfo" class="muted small">No file loaded</span>
         </div>
 
-        <div style="margin-top:10px" class="actions">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <input id="segSearch" class="search" placeholder="Search segments (text or offset)..." />
+          <button id="btnSearchClear" class="btn alt" title="Clear search">✖</button>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
+          <div class="label-small">Detected segments (click to inspect)</div>
+          <div class="label-small muted">MinLen:
+            <input id="minLen" type="number" value="24" style="width:64px;margin-left:6px;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" />
+          </div>
+        </div>
+
+        <div id="segList" class="list" aria-live="polite"></div>
+
+        <div class="actions" style="margin-top:8px">
           <button id="btnExtractAll" class="btn alt">Extract All Printable</button>
           <button id="btnTryGzip" class="btn alt">Detect & Try GZIP</button>
           <button id="btnFindBase64" class="btn alt">Find Base64</button>
+          <button id="btnLoadMore" class="btn alt">Load more</button>
         </div>
 
-        <div style="margin-top:10px" class="muted">Diagnostics</div>
-        <div id="diag" class="preview small"></div>
+        <div style="margin-top:10px">
+          <div class="label-small muted">Diagnostics</div>
+          <div id="diag" class="preview small" style="max-height:120px"></div>
+        </div>
       </div>
 
       <div class="panel">
-        <div style="display:flex;gap:12px;align-items:center">
+        <div style="display:flex;gap:12px;align-items:flex-start">
           <div style="flex:1">
-            <div class="muted small">Selected segment (editable)</div>
+            <div class="label-small muted">Selected segment (editable)</div>
             <textarea id="txtSegment" placeholder="Select a detected segment to edit..."></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+              <button id="btnSaveToMemory" class="btn">Save (apply to memory)</button>
+              <button id="btnUndoSave" class="btn alt">Undo last save</button>
+              <button id="btnPatchDownload" class="btn">Download patched file</button>
+              <button id="btnPatchSegment" class="btn alt">Download segment-patch</button>
+              <div style="margin-left:auto" class="label-small muted">Edits not saved until you click Save</div>
+            </div>
           </div>
-          <div style="width:260px">
-            <div class="muted small">Segment info</div>
+
+          <div style="width:300px">
+            <div class="label-small muted">Segment info</div>
             <div id="segInfo" class="preview small">No selection</div>
 
-            <div style="margin-top:8px" class="actions">
-              <button id="btnPatch" class="btn">Patch & Download</button>
-              <button id="btnReplaceBytes" class="btn alt">Replace raw bytes</button>
-            </div>
-
-            <div style="margin-top:10px">
-              <label class="small muted">When patching:</label>
-              <div class="muted small">You may expand or shrink the file; splicing will produce a new file. Keep backups.</div>
-            </div>
-
-            <div style="margin-top:10px">
-              <label class="small muted">Preview output</label>
+            <div style="margin-top:8px">
+              <div class="label-small muted">Preview output</div>
               <div id="previewOut" class="preview small">—</div>
             </div>
           </div>
         </div>
 
+        <div style="margin-top:10px" class="muted small">Tip: Save applies your edits into memory so you can patch multiple segments and download a single patched file. Use Undo if you need to revert the last save.</div>
       </div>
     </div>
 
-    <div class="footer">
-      Tip: If the segment is compressed (gzip) use "Detect & Try GZIP". If you don't get expected text, try "Find Base64" to decode embedded base64 blocks. Always keep original backups before writing patched files to your device.
-    </div>
+    <div class="footer">Keep backups before writing files back to the game. Use an alternate device/account for testing.</div>
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script>
-/*
-  Binary metadata editor - client-side only
-  - detects printable sequences
-  - attempts gzip decompress if header found
-  - finds base64 blocks and decodes them
-  - allows editing a selected segment and splicing it back into the binary and downloading
+/* Optimized binary metadata editor:
+   - search
+   - save edits into memory (undo)
+   - chunked detection for responsiveness
+   - load-more for segment list
 */
 
 const fileInput = document.getElementById('fileInput');
@@ -114,17 +127,33 @@ const segInfo = document.getElementById('segInfo');
 const btnExtractAll = document.getElementById('btnExtractAll');
 const btnTryGzip = document.getElementById('btnTryGzip');
 const btnFindBase64 = document.getElementById('btnFindBase64');
-const btnPatch = document.getElementById('btnPatch');
-const btnReplaceBytes = document.getElementById('btnReplaceBytes');
+const btnPatchDownload = document.getElementById('btnPatchDownload');
+const btnPatchSegment = document.getElementById('btnPatchSegment');
+const btnSaveToMemory = document.getElementById('btnSaveToMemory');
+const btnUndoSave = document.getElementById('btnUndoSave');
 const previewOut = document.getElementById('previewOut');
+const segSearch = document.getElementById('segSearch');
+const btnSearchClear = document.getElementById('btnSearchClear');
+const minLenInput = document.getElementById('minLen');
+const btnLoadMore = document.getElementById('btnLoadMore');
 
 let currentFile = null;       // ArrayBuffer
+let originalFile = null;      // backup ArrayBuffer
 let currentName = "";
-let segments = [];            // {start, end, text, type}
+let segments = [];            // {start,end,text,type}
+let displayedCount = 100;     // how many segments to render initially
 let selectedIndex = -1;
+let lastSaveBackup = null;    // for undo one-level
+let searchTerm = "";
+let detectJobToken = 0;
 
+// Helpers
 function logd(s){ diag.textContent = s; }
+function isPrintableChar(c){ return c >= 32 && c <= 126; }
+function typeSafeString(s){ return s.replace(/\x00/g,'').trim(); }
+function decodeUtf8(slice){ try { return new TextDecoder('utf-8', {fatal:false}).decode(slice); } catch(e){ return String.fromCharCode(...slice); } }
 
+// file load
 fileInput.addEventListener('change', (e)=>{
   const f = e.target.files[0];
   if(!f) return;
@@ -132,123 +161,207 @@ fileInput.addEventListener('change', (e)=>{
   const reader = new FileReader();
   reader.onload = (ev)=>{
     currentFile = ev.target.result;
+    // take snapshot
+    originalFile = currentFile.slice(0);
     fileInfo.textContent = `${currentName} — ${currentFile.byteLength} bytes`;
-    detectPrintableSegments();
+    // start detection with chunked approach
+    detectPrintableSegmentsChunked(parseInt(minLenInput.value || 24,10));
   };
   reader.readAsArrayBuffer(f);
 });
 
-function isPrintableChar(c){
-  return c >= 32 && c <= 126;
-}
-
-function detectPrintableSegments(minLen=16){
+// chunked printable detection
+function detectPrintableSegmentsChunked(minLen=24){
+  detectJobToken++; // cancel previous jobs
+  const myToken = detectJobToken;
   segments = [];
+  selectedIndex = -1;
+  segList.innerHTML = '';
+  txtSegment.value = '';
+  segInfo.textContent = 'No selection';
+  previewOut.textContent = '—';
+  logd('Scanning file for printable segments...');
+
   const bytes = new Uint8Array(currentFile);
-  let i=0, N=bytes.length;
-  while(i<N){
-    // find run of printable chars
+  const N = bytes.length;
+  let i = 0;
+  const chunkSize = 2_000_00; // 200k per chunk - tuned for responsiveness
+  function processChunk(){
+    if(myToken !== detectJobToken) return; // cancelled
+    const end = Math.min(i + chunkSize, N);
+    let cursor = i;
+    while(cursor < end){
+      if(isPrintableChar(bytes[cursor]) || bytes[cursor]===9){
+        let j = cursor;
+        while(j < N && (isPrintableChar(bytes[j]) || bytes[j]===9)) j++;
+        if(j - cursor >= minLen){
+          const slice = bytes.slice(cursor, j);
+          const text = typeSafeString(decodeUtf8(slice));
+          segments.push({start:cursor, end:j, text:text, type:'printable'});
+        }
+        cursor = j;
+      } else {
+        cursor++;
+      }
+    }
+    i = end;
+    // update UI progressively every few chunks
+    if(i % (chunkSize*4) === 0 || i >= N){
+      renderSegmentList(true); // incremental render
+      logd(`Scanning... ${Math.round(i/N*100)}% — found ${segments.length} segments`);
+    }
+    if(i < N){
+      setTimeout(processChunk, 12); // yield to UI
+    } else {
+      // secondary pass for small segments (lower threshold)
+      secondarySmallScan(8, myToken);
+    }
+  }
+  processChunk();
+}
+
+function secondarySmallScan(minSmall, myToken){
+  const bytes = new Uint8Array(currentFile);
+  const N = bytes.length;
+  let i = 0;
+  const chunkSize = 200_000;
+  while(i < N){
+    // find small sequences but only if they don't overlap existing segments
+    let j=i;
     if(isPrintableChar(bytes[i])){
-      let j=i;
       while(j<N && (isPrintableChar(bytes[j]) || bytes[j]===9)) j++;
-      if(j-i >= minLen){
-        // decode this slice as latin1/utf8
-        const slice = bytes.slice(i,j);
-        let text;
-        try { text = new TextDecoder('utf-8', {fatal:false}).decode(slice); }
-        catch(e){ text = String.fromCharCode(...slice); }
-        segments.push({start:i,end:j,text:typeSafeString(text),type:'printable'});
+      if(j-i >= minSmall){
+        const overlap = segments.some(s => !(j <= s.start || i >= s.end));
+        if(!overlap){
+          const slice = bytes.slice(i,j);
+          const text = typeSafeString(decodeUtf8(slice));
+          segments.push({start:i,end:j,text:text,type:'printable'});
+        }
       }
-      i=j;
+      i = j;
     } else i++;
+    // avoid blocking too long
+    if(i % (chunkSize*8) === 0) {
+      // yield
+    }
   }
-  // also try to find embedded JSON-like shorter segments (>=8)
-  const smallMin = 8;
-  i=0;
-  while(i<N){
-    if(isPrintableChar(bytes[i])){
-      let j=i; while(j<N && (isPrintableChar(bytes[j]) || bytes[j]===9)) j++;
-      if(j-i >= smallMin){
-        const slice = bytes.slice(i,j);
-        let text;
-        try { text = new TextDecoder('utf-8', {fatal:false}).decode(slice); }
-        catch(e){ text = String.fromCharCode(...slice); }
-        // only add if not already present (overlap)
-        const overlap = segments.some(s=>!(j<=s.start || i>=s.end));
-        if(!overlap) segments.push({start:i,end:j,text:typeSafeString(text), type:'printable'});
-      }
-      i=j;
-    } else i++;
-  }
-
-  // sort by start
+  // finalize
   segments.sort((a,b)=>a.start-b.start);
-  renderSegmentList();
-  logd(`Found ${segments.length} printable segments (minLen=${minLen}). Click one to inspect.`);
+  renderSegmentList(false);
+  logd(`Scan complete. Found ${segments.length} segments.`);
 }
 
-function typeSafeString(s){
-  // remove long runs of weird control or nonprinting if any, keep readable portion
-  return s.replace(/\x00/g,'').trim();
-}
-
-function renderSegmentList(){
+// Render list (paged)
+function renderSegmentList(incremental=false){
   segList.innerHTML = '';
   if(!segments.length){ segList.textContent = 'No printable segments detected.'; return; }
-  segments.forEach((seg, idx)=>{
+  const frag = document.createDocumentFragment();
+  const filtered = filterSegmentsBySearch();
+  const toShow = filtered.slice(0, displayedCount);
+  toShow.forEach((seg, idx)=>{
     const el = document.createElement('div');
-    el.className = 'seg' + (idx===selectedIndex? ' sel':'');
+    el.className = 'seg' + (selectedIndex===idx? ' sel':'');
+    el.dataset.idx = idx;
     el.innerHTML = `<div style="font-size:13px"><strong>Offset:</strong> ${seg.start} — ${seg.end} (${seg.end-seg.start} bytes)</div>
                     <div style="margin-top:6px;color:var(--muted);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${seg.text.slice(0,260)}</div>`;
-    el.addEventListener('click', ()=> { selectSegment(idx); });
-    segList.appendChild(el);
+    el.addEventListener('click', ()=> { selectSegmentByFilteredIndex(idx); });
+    frag.appendChild(el);
+  });
+  segList.appendChild(frag);
+  if(filtered.length > displayedCount){
+    const more = document.createElement('div');
+    more.style.textAlign='center';
+    more.innerHTML = `<button class="btn alt" id="btnMoreInner">Show ${filtered.length - displayedCount} more</button>`;
+    segList.appendChild(more);
+    document.getElementById('btnMoreInner').addEventListener('click', ()=>{
+      displayedCount += 200;
+      renderSegmentList();
+    });
+  }
+}
+
+// filter segments by search up-to-date
+function filterSegmentsBySearch(){
+  const term = searchTerm.trim().toLowerCase();
+  if(!term) return segments;
+  // allow searching numeric offsets too (e.g. "offset:1234")
+  const num = parseInt(term,10);
+  return segments.filter(s=>{
+    if(!isNaN(num) && s.start === num) return true;
+    if(s.start.toString().includes(term) || s.end.toString().includes(term)) return true;
+    if(s.text.toLowerCase().includes(term)) return true;
+    return false;
   });
 }
 
-function selectSegment(i){
-  selectedIndex = i;
-  const s = segments[i];
-  txtSegment.value = s.text;
-  segInfo.textContent = `offset ${s.start} — ${s.end} (${s.end-s.start} bytes)  type: ${s.type}`;
-  renderSegmentList();
-  updatePreviewOut(s.text);
+// select mapping (filtered index -> real segment)
+function selectSegmentByFilteredIndex(filteredIdx){
+  const filtered = filterSegmentsBySearch();
+  const seg = filtered[filteredIdx];
+  if(!seg) return;
+  // find its index in the global segments array
+  const realIdx = segments.findIndex(s => s.start === seg.start && s.end === seg.end && s.text === seg.text);
+  if(realIdx < 0) return;
+  selectedIndex = realIdx;
+  selectSegment(realIdx);
 }
 
+function selectSegment(i){
+  const s = segments[i];
+  if(!s) return;
+  txtSegment.value = s.text;
+  segInfo.textContent = `offset ${s.start} — ${s.end} (${s.end-s.start} bytes)  type: ${s.type}`;
+  updatePreviewOut(s.text);
+  renderSegmentList();
+}
+
+// search handlers (debounced)
+let searchTimer = null;
+segSearch.addEventListener('input', ()=>{
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(()=>{
+    searchTerm = segSearch.value;
+    displayedCount = 100; // reset page
+    renderSegmentList();
+  }, 220);
+});
+btnSearchClear.addEventListener('click', ()=>{ segSearch.value=''; searchTerm=''; displayedCount=100; renderSegmentList(); });
+
+// helper preview
 function updatePreviewOut(txt){
   previewOut.textContent = txt.slice(0,2000);
 }
 
-// Try to detect gzip header anywhere and decompress chunk if found near printable region
+// gzip detection
 btnTryGzip.addEventListener('click', ()=>{
-  if(!currentFile) { logd('No file loaded'); return; }
+  if(!currentFile){ logd('No file loaded'); return; }
   const bytes = new Uint8Array(currentFile);
   const gzOffsets = [];
   for(let i=0;i<bytes.length-2;i++){
-    if(bytes[i]===0x1f && bytes[i+1]===0x8b){ gzOffsets.push(i); }
+    if(bytes[i]===0x1f && bytes[i+1]===0x8b) gzOffsets.push(i);
     if(gzOffsets.length>100) break;
   }
   if(gzOffsets.length===0){ logd('No gzip headers found (0x1f8b)'); return; }
-  logd(`Found gzip headers at offsets: ${gzOffsets.slice(0,10).join(', ')} — trying to decompress the first few...`);
+  logd(`Found gzip headers at offsets: ${gzOffsets.slice(0,10).join(', ')} — trying to decompress first few...`);
+  let added=0;
   for(const off of gzOffsets.slice(0,6)){
     try {
-      // find next printable region after offset, or try decompress from offset to end
-      const slice = bytes.slice(off);
+      const slice = new Uint8Array(currentFile).slice(off);
       const inflated = pako.ungzip(slice);
       let txt = new TextDecoder('utf-8', {fatal:false}).decode(inflated);
       txt = typeSafeString(txt);
       if(txt.length>0){
-        // add to segments
-        segments.push({start:off, end: off + slice.length, text: txt, type:'gzip'});
+        segments.push({start:off,end:off+slice.length,text:txt,type:'gzip'});
+        added++;
       }
     } catch(e){}
   }
-  // sort unique
   segments.sort((a,b)=>a.start-b.start);
   renderSegmentList();
-  logd(`Gzip search complete. Total segments now ${segments.length}. Select a gzip-derived segment to view text.`);
+  logd(`Gzip attempts finished. Added ${added} candidates.`);
 });
 
-// Extract base64-like substrings from printable segments
+// find base64 inside printable segments
 btnFindBase64.addEventListener('click', ()=>{
   if(!segments.length){ logd('No printable segments to scan for base64.'); return; }
   let found = 0;
@@ -260,12 +373,9 @@ btnFindBase64.addEventListener('click', ()=>{
     matches.forEach(m=>{
       try {
         const decoded = atob(m);
-        // if decoded has many printable characters, keep
-        const printableCount = Array.from(decoded).filter(c=>c.charCodeAt(0)>=32 && c.charCodeAt(0)<=126).length;
+        const printableCount = Array.from(decoded).filter(c=>{ const cc=c.charCodeAt(0); return cc>=32 && cc<=126; }).length;
         if(printableCount / decoded.length > 0.3){
-          // add decoded as a new segment (embedding info where original came from)
-          const fakeStart = seg.start; // can't know exact inner offset reliably
-          segments.push({start:fakeStart, end: seg.end, text: decoded, type:'base64-decoded'});
+          segments.push({start:seg.start,end:seg.end,text:typeSafeString(decoded),type:'base64-decoded'});
           found++;
         }
       } catch(e){}
@@ -273,10 +383,10 @@ btnFindBase64.addEventListener('click', ()=>{
   }
   segments.sort((a,b)=>a.start-b.start);
   renderSegmentList();
-  logd(`Base64 scan complete. Added ${found} decoded candidates. Select one to edit.`);
+  logd(`Base64 scan complete. Added ${found} decoded candidates.`);
 });
 
-// Extract All printable as a single big block (convenience)
+// Extract all printable convenience
 btnExtractAll.addEventListener('click', ()=>{
   if(!currentFile){ logd('No file loaded'); return; }
   const bytes = new Uint8Array(currentFile);
@@ -285,44 +395,79 @@ btnExtractAll.addEventListener('click', ()=>{
     if(isPrintableChar(bytes[i]) || bytes[i]===9) out += String.fromCharCode(bytes[i]);
     else out += ' ';
   }
-  // collapse runs of spaces and show lines
   out = out.replace(/\s{3,}/g, '\n');
-  // add as synthetic segment
   segments.push({start:0,end:bytes.length,text:typeSafeString(out),type:'all-printable'});
   renderSegmentList();
   logd('Extracted all printable characters into a single editable segment (bottom of list).');
 });
 
-// Patch: replace selected segment with new UTF-8 encoded bytes and offer download
-btnPatch.addEventListener('click', ()=>{
-  if(selectedIndex < 0) { logd('No segment selected'); return; }
+// Patch & download (single-segment patch, does not modify currentFile)
+btnPatchSegment.addEventListener('click', ()=>{
+  if(selectedIndex<0){ logd('No segment selected'); return; }
   const seg = segments[selectedIndex];
   const newText = txtSegment.value;
-  // encode newText as UTF-8
   const enc = new TextEncoder().encode(newText);
-  spliceAndDownload(seg.start, seg.end, enc, `patched-${currentName}`);
+  spliceAndDownload(seg.start, seg.end, enc, `patched-segment-${currentName}`);
 });
 
-// Replace raw bytes: user can paste hex string into the editor and click "Replace raw bytes"
-btnReplaceBytes.addEventListener('click', ()=>{
-  if(selectedIndex < 0) { logd('No segment selected'); return; }
+// Save edits into memory (apply to currentFile)
+btnSaveToMemory.addEventListener('click', ()=>{
+  if(selectedIndex<0){ logd('No segment selected'); return; }
   const seg = segments[selectedIndex];
-  const raw = txtSegment.value.trim();
-  // interpret as hex stream if contains hex chars and spaces
-  let bytes = null;
-  const hexOnly = raw.replace(/[^0-9a-fA-F]/g,'');
-  if(hexOnly.length > 0 && hexOnly.length % 2 === 0 && hexOnly.length/2 < 5_000_000){
-    // parse hex
-    const arr = new Uint8Array(hexOnly.length/2);
-    for(let i=0;i<arr.length;i++){ arr[i]=parseInt(hexOnly.substr(i*2,2),16); }
-    bytes = arr;
-  } else {
-    // else treat as UTF-8 text
-    bytes = new TextEncoder().encode(raw);
+  const newText = txtSegment.value;
+  const enc = new TextEncoder().encode(newText);
+  // backup for undo
+  lastSaveBackup = currentFile.slice(0);
+  // splice into currentFile
+  currentFile = spliceArrayBuffer(currentFile, seg.start, seg.end, enc);
+  // update this segment's end and text
+  const delta = enc.length - (seg.end - seg.start);
+  seg.end = seg.start + enc.length;
+  seg.text = newText;
+  // shift subsequent segments start/end by delta
+  for(let i=0;i<segments.length;i++){
+    if(segments[i].start > seg.start){
+      segments[i].start += delta;
+      segments[i].end += delta;
+    }
   }
-  spliceAndDownload(seg.start, seg.end, bytes, `patched-${currentName}`);
+  renderSegmentList();
+  logd(`Saved edits to memory. New file length: ${currentFile.byteLength} bytes.`);
 });
 
+// Undo last save (one level)
+btnUndoSave.addEventListener('click', ()=>{
+  if(!lastSaveBackup){ logd('No undo available'); return; }
+  currentFile = lastSaveBackup.slice(0);
+  lastSaveBackup = null;
+  // re-run detection to refresh segments (preserve minLen)
+  detectPrintableSegmentsChunked(parseInt(minLenInput.value || 24,10));
+  logd('Reverted last save (restored file in memory).');
+});
+
+// Download patched whole file (currentFile may be original or modified after Save)
+btnPatchDownload.addEventListener('click', ()=>{
+  if(!currentFile){ logd('No file loaded'); return; }
+  const blob = new Blob([currentFile], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download = `patched-${currentName}`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  logd('Download started for patched file.');
+});
+
+// utility: splice arraybuffer -> returns new ArrayBuffer
+function spliceArrayBuffer(arrayBuffer, start, end, newBytes){
+  const orig = new Uint8Array(arrayBuffer);
+  const before = orig.slice(0, start);
+  const after = orig.slice(end);
+  const out = new Uint8Array(before.length + newBytes.length + after.length);
+  out.set(before, 0);
+  out.set(newBytes, before.length);
+  out.set(after, before.length + newBytes.length);
+  return out.buffer;
+}
+
+// helper to splice & immediately download (used by segment patch)
 function spliceAndDownload(start, end, newBytes, outName){
   const orig = new Uint8Array(currentFile);
   const before = orig.slice(0,start);
@@ -339,9 +484,95 @@ function spliceAndDownload(start, end, newBytes, outName){
   logd(`Patched bytes ${start}-${end} -> new length ${newBytes.length}. Download ready: ${outName}`);
 }
 
-function atobSafe(s){
-  try { return atob(s); } catch(e) { return null; }
+// select segment by index and populate editor
+function selectSegmentByIndex(idx){
+  if(idx<0 || idx>=segments.length) return;
+  selectedIndex = idx;
+  const s = segments[idx];
+  txtSegment.value = s.text;
+  segInfo.textContent = `offset ${s.start} — ${s.end} (${s.end-s.start} bytes)  type: ${s.type}`;
+  updatePreviewOut(s.text);
+  renderSegmentList();
 }
+
+// wrapper used when user clicks filtered entry
+function selectSegmentByFilteredIndex(filteredIdx){
+  const filtered = filterSegmentsBySearch();
+  const seg = filtered[filteredIdx];
+  if(!seg) return;
+  const realIdx = segments.findIndex(s => s.start===seg.start && s.end===seg.end && s.text===seg.text);
+  selectSegmentByIndex(realIdx);
+}
+
+// filter function uses global searchTerm
+function filterSegmentsBySearch(){
+  const term = (segSearch.value || '').trim().toLowerCase();
+  if(!term) return segments;
+  const num = parseInt(term,10);
+  return segments.filter(s=>{
+    if(!isNaN(num) && s.start === num) return true;
+    if(s.start.toString().includes(term) || s.end.toString().includes(term)) return true;
+    if(s.text.toLowerCase().includes(term)) return true;
+    return false;
+  });
+}
+
+// renderSegmentList override to use filtered list and mapping
+function renderSegmentList(){
+  segList.innerHTML = '';
+  if(!segments.length){ segList.textContent = 'No printable segments detected.'; return; }
+  const frag = document.createDocumentFragment();
+  const filtered = filterSegmentsBySearch();
+  const toShow = filtered.slice(0, displayedCount);
+  for(let i=0;i<toShow.length;i++){
+    const seg = toShow[i];
+    const el = document.createElement('div');
+    el.className = 'seg' + (selectedIndex>=0 && segments[selectedIndex].start===seg.start && segments[selectedIndex].end===seg.end? ' sel':'');
+    el.innerHTML = `<div style="font-size:13px"><strong>Offset:</strong> ${seg.start} — ${seg.end} (${seg.end-seg.start} bytes)</div>
+                    <div style="margin-top:6px;color:var(--muted);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${seg.text.slice(0,260)}</div>`;
+    ((idx)=> el.addEventListener('click', ()=> selectSegmentByFilteredIndex(idx)))(i);
+    frag.appendChild(el);
+  }
+  segList.appendChild(frag);
+  if(filtered.length > displayedCount){
+    const more = document.createElement('div');
+    more.style.textAlign='center';
+    more.innerHTML = `<button class="btn alt" id="btnMoreInner">Show ${filtered.length - displayedCount} more</button>`;
+    segList.appendChild(more);
+    document.getElementById('btnMoreInner').addEventListener('click', ()=>{
+      displayedCount += 200;
+      renderSegmentList();
+    });
+  }
+}
+
+// load-more button resets displayedCount
+btnLoadMore.addEventListener('click', ()=>{ displayedCount += 200; renderSegmentList(); });
+
+// initial state helpers: clear selection if minLen changed
+minLenInput.addEventListener('change', ()=> {
+  if(currentFile) detectPrintableSegmentsChunked(parseInt(minLenInput.value || 24,10));
+});
+
+// small utility: auto-parse when user edits selection and clicks Save - we simply save text as-is (UTF-8)
+txtSegment.addEventListener('input', ()=> {
+  // keep preview updated but truncated
+  updatePreviewOut(txtSegment.value);
+});
+
+// helper: small throttle for UI
+function debounce(fn, wait){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), wait); }; }
+
+// When file changed externally, reset
+window.addEventListener('beforeunload', ()=> {
+  // nothing special, file isn't stored server-side
+});
+
+// initial doc ready
+document.addEventListener('DOMContentLoaded', ()=> {
+  // nothing to init beyond handlers
+});
+
 </script>
 </body>
 </html>
