@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Metadata.dat Binary Inspector & Editor — Optimized</title>
+<title>Metadata.dat Binary Editor</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#0f1724;--panel:#0b1220;--muted:#9aa6bf;--accent:#7dd3fc}
@@ -46,7 +46,7 @@
     <div class="grid">
       <div class="panel">
         <div class="top-row" style="margin-bottom:10px">
-          <label class="filelabel">📁 Load file <input id="fileInput" type="file" accept="*" style="display:none"/></label>
+          <label class="filelabel">📁 Load file: <input id="fileInput" type="file" accept="*" style="display:none"/></label>
           <span id="fileInfo" class="muted small">No file loaded</span>
         </div>
 
@@ -106,7 +106,7 @@
       </div>
     </div>
 
-    <div class="footer">Keep backups before writing files back to the game. Use an alternate device/account for testing.</div>
+    <div class="footer">Keep backups before writing files back to the game.</div>
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
