@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Metadata.dat Binary Editor</title>
+<title>Metadata.dat Binary Inspector & Editor — Optimized + Binary Save</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#0f1724;--panel:#0b1220;--muted:#9aa6bf;--accent:#7dd3fc}
@@ -38,7 +38,7 @@
     <header>
       <div>
         <h1>Metadata.dat Binary Inspector & Editor</h1>
-        <div class="muted">Load <code>global-metadata.dat</code>, edit embedded metadata, patch & download — client-side only.</div>
+        <div class="muted">Load <code>global-metadata.dat</code>, edit embedded segments, patch & download — client-side only.</div>
       </div>
       <div style="margin-left:auto" class="muted small">Local only • No uploads</div>
     </header>
@@ -46,7 +46,7 @@
     <div class="grid">
       <div class="panel">
         <div class="top-row" style="margin-bottom:10px">
-          <label class="filelabel">📁 Load file: <input id="fileInput" type="file" accept="*" style="display:none"/></label>
+          <label class="filelabel">📁 Load file <input id="fileInput" type="file" accept="*" style="display:none"/></label>
           <span id="fileInfo" class="muted small">No file loaded</span>
         </div>
 
@@ -106,17 +106,12 @@
       </div>
     </div>
 
-    <div class="footer">Keep backups before writing files back to the game.</div>
+    <div class="footer">Keep backups before writing files back to the game. Use an alternate device/account for testing.</div>
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script>
-/* Optimized binary metadata editor:
-   - search
-   - save edits into memory (undo)
-   - chunked detection for responsiveness
-   - load-more for segment list
-*/
+/* Full updated editor with binary-safe save + gzip/base64 re-encode */
 
 const fileInput = document.getElementById('fileInput');
 const fileInfo = document.getElementById('fileInfo');
@@ -138,42 +133,49 @@ const minLenInput = document.getElementById('minLen');
 const btnLoadMore = document.getElementById('btnLoadMore');
 
 let currentFile = null;       // ArrayBuffer
-let originalFile = null;      // backup ArrayBuffer
+let originalFile = null;
 let currentName = "";
 let segments = [];            // {start,end,text,type}
-let displayedCount = 100;     // how many segments to render initially
+let displayedCount = 100;
 let selectedIndex = -1;
-let lastSaveBackup = null;    // for undo one-level
+let lastSaveBackup = null;
 let searchTerm = "";
-let detectJobToken = 0;
 
-// Helpers
+// helpers
 function logd(s){ diag.textContent = s; }
 function isPrintableChar(c){ return c >= 32 && c <= 126; }
-function typeSafeString(s){ return s.replace(/\x00/g,'').trim(); }
-function decodeUtf8(slice){ try { return new TextDecoder('utf-8', {fatal:false}).decode(slice); } catch(e){ return String.fromCharCode(...slice); } }
+function typeSafeString(s){ return String(s).replace(/\x00/g,'').trim(); }
+const utf8Decoder = new TextDecoder('utf-8', {fatal:false});
+const utf8Encoder = new TextEncoder();
 
-// file load
-fileInput.addEventListener('change', (e)=>{
-  const f = e.target.files[0];
-  if(!f) return;
-  currentName = f.name;
-  const reader = new FileReader();
-  reader.onload = (ev)=>{
-    currentFile = ev.target.result;
-    // take snapshot
-    originalFile = currentFile.slice(0);
-    fileInfo.textContent = `${currentName} — ${currentFile.byteLength} bytes`;
-    // start detection with chunked approach
-    detectPrintableSegmentsChunked(parseInt(minLenInput.value || 24,10));
-  };
-  reader.readAsArrayBuffer(f);
-});
+function decodeUtf8(slice){ return utf8Decoder.decode(slice); }
+function encodeUtf8(str){ return utf8Encoder.encode(String(str)); }
 
-// chunked printable detection
+function getPatchedFilename(baseName) {
+  if (!baseName) return "patched.dat";
+  if (baseName.includes(".")) {
+    const parts = baseName.split(".");
+    parts[0] = "patched-" + parts[0];
+    return parts.join(".");
+  }
+  return "patched-" + baseName + ".dat";
+}
+
+function spliceArrayBuffer(arrayBuffer, start, end, newUint8) {
+  const orig = new Uint8Array(arrayBuffer);
+  const before = orig.slice(0, start);
+  const after = orig.slice(end);
+  const out = new Uint8Array(before.length + newUint8.length + after.length);
+  out.set(before, 0);
+  out.set(newUint8, before.length);
+  out.set(after, before.length + newUint8.length);
+  return out.buffer;
+}
+
+// chunked detection (non-blocking)
 function detectPrintableSegmentsChunked(minLen=24){
-  detectJobToken++; // cancel previous jobs
-  const myToken = detectJobToken;
+  detectJobToken = (detectJobToken || 0) + 1;
+  const jobToken = detectJobToken;
   segments = [];
   selectedIndex = -1;
   segList.innerHTML = '';
@@ -185,9 +187,9 @@ function detectPrintableSegmentsChunked(minLen=24){
   const bytes = new Uint8Array(currentFile);
   const N = bytes.length;
   let i = 0;
-  const chunkSize = 2_000_00; // 200k per chunk - tuned for responsiveness
+  const chunkSize = 200000;
   function processChunk(){
-    if(myToken !== detectJobToken) return; // cancelled
+    if (jobToken !== detectJobToken) return;
     const end = Math.min(i + chunkSize, N);
     let cursor = i;
     while(cursor < end){
@@ -196,77 +198,65 @@ function detectPrintableSegmentsChunked(minLen=24){
         while(j < N && (isPrintableChar(bytes[j]) || bytes[j]===9)) j++;
         if(j - cursor >= minLen){
           const slice = bytes.slice(cursor, j);
-          const text = typeSafeString(decodeUtf8(slice));
-          segments.push({start:cursor, end:j, text:text, type:'printable'});
+          let text;
+          try { text = decodeUtf8(slice); } catch(e){ text = String.fromCharCode.apply(null, slice); }
+          segments.push({start:cursor, end:j, text:typeSafeString(text), type:'printable'});
         }
         cursor = j;
-      } else {
-        cursor++;
-      }
+      } else cursor++;
     }
     i = end;
-    // update UI progressively every few chunks
-    if(i % (chunkSize*4) === 0 || i >= N){
-      renderSegmentList(true); // incremental render
-      logd(`Scanning... ${Math.round(i/N*100)}% — found ${segments.length} segments`);
-    }
-    if(i < N){
-      setTimeout(processChunk, 12); // yield to UI
-    } else {
-      // secondary pass for small segments (lower threshold)
-      secondarySmallScan(8, myToken);
-    }
+    if(i % (chunkSize*4) === 0 || i >= N) renderSegmentList(true);
+    if(i < N) setTimeout(processChunk, 12);
+    else secondarySmallScan(8, jobToken);
   }
   processChunk();
 }
 
-function secondarySmallScan(minSmall, myToken){
+function secondarySmallScan(minSmall, jobToken){
   const bytes = new Uint8Array(currentFile);
   const N = bytes.length;
   let i = 0;
-  const chunkSize = 200_000;
   while(i < N){
-    // find small sequences but only if they don't overlap existing segments
-    let j=i;
+    if(jobToken !== detectJobToken) return;
     if(isPrintableChar(bytes[i])){
-      while(j<N && (isPrintableChar(bytes[j]) || bytes[j]===9)) j++;
-      if(j-i >= minSmall){
+      let j = i;
+      while(j < N && (isPrintableChar(bytes[j]) || bytes[j]===9)) j++;
+      if(j - i >= minSmall){
         const overlap = segments.some(s => !(j <= s.start || i >= s.end));
         if(!overlap){
           const slice = bytes.slice(i,j);
-          const text = typeSafeString(decodeUtf8(slice));
-          segments.push({start:i,end:j,text:text,type:'printable'});
+          let text;
+          try { text = decodeUtf8(slice); } catch(e){ text = String.fromCharCode.apply(null, slice); }
+          segments.push({start:i, end:j, text:typeSafeString(text), type:'printable'});
         }
       }
       i = j;
     } else i++;
-    // avoid blocking too long
-    if(i % (chunkSize*8) === 0) {
-      // yield
-    }
   }
-  // finalize
   segments.sort((a,b)=>a.start-b.start);
   renderSegmentList(false);
   logd(`Scan complete. Found ${segments.length} segments.`);
 }
 
-// Render list (paged)
 function renderSegmentList(incremental=false){
   segList.innerHTML = '';
   if(!segments.length){ segList.textContent = 'No printable segments detected.'; return; }
-  const frag = document.createDocumentFragment();
   const filtered = filterSegmentsBySearch();
   const toShow = filtered.slice(0, displayedCount);
-  toShow.forEach((seg, idx)=>{
+  const frag = document.createDocumentFragment();
+  for(let idx=0; idx<toShow.length; idx++){
+    const seg = toShow[idx];
     const el = document.createElement('div');
-    el.className = 'seg' + (selectedIndex===idx? ' sel':'');
-    el.dataset.idx = idx;
+    const isSel = selectedIndex >= 0 && segments[selectedIndex].start === seg.start && segments[selectedIndex].end === seg.end && segments[selectedIndex].text === seg.text;
+    el.className = 'seg' + (isSel ? ' sel' : '');
     el.innerHTML = `<div style="font-size:13px"><strong>Offset:</strong> ${seg.start} — ${seg.end} (${seg.end-seg.start} bytes)</div>
                     <div style="margin-top:6px;color:var(--muted);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${seg.text.slice(0,260)}</div>`;
-    el.addEventListener('click', ()=> { selectSegmentByFilteredIndex(idx); });
+    (function(localIdx){
+      el.addEventListener('click', ()=> { selectSegmentByFilteredIndex(localIdx); });
+    })(idx);
     frag.appendChild(el);
-  });
+  }
   segList.appendChild(frag);
   if(filtered.length > displayedCount){
     const more = document.createElement('div');
@@ -274,18 +264,15 @@ function renderSegmentList(incremental=false){
     more.innerHTML = `<button class="btn alt" id="btnMoreInner">Show ${filtered.length - displayedCount} more</button>`;
     segList.appendChild(more);
     document.getElementById('btnMoreInner').addEventListener('click', ()=>{
-      displayedCount += 200;
-      renderSegmentList();
+      displayedCount += 200; renderSegmentList();
     });
   }
 }
 
-// filter segments by search up-to-date
 function filterSegmentsBySearch(){
-  const term = searchTerm.trim().toLowerCase();
+  const term = (segSearch.value || '').trim().toLowerCase();
   if(!term) return segments;
-  // allow searching numeric offsets too (e.g. "offset:1234")
-  const num = parseInt(term,10);
+  const num = parseInt(term, 10);
   return segments.filter(s=>{
     if(!isNaN(num) && s.start === num) return true;
     if(s.start.toString().includes(term) || s.end.toString().includes(term)) return true;
@@ -294,13 +281,11 @@ function filterSegmentsBySearch(){
   });
 }
 
-// select mapping (filtered index -> real segment)
 function selectSegmentByFilteredIndex(filteredIdx){
   const filtered = filterSegmentsBySearch();
   const seg = filtered[filteredIdx];
   if(!seg) return;
-  // find its index in the global segments array
-  const realIdx = segments.findIndex(s => s.start === seg.start && s.end === seg.end && s.text === seg.text);
+  const realIdx = segments.findIndex(s => s.start===seg.start && s.end===seg.end && s.text===seg.text);
   if(realIdx < 0) return;
   selectedIndex = realIdx;
   selectSegment(realIdx);
@@ -311,28 +296,43 @@ function selectSegment(i){
   if(!s) return;
   txtSegment.value = s.text;
   segInfo.textContent = `offset ${s.start} — ${s.end} (${s.end-s.start} bytes)  type: ${s.type}`;
-  updatePreviewOut(s.text);
+  previewOut.textContent = s.text.slice(0,2000);
   renderSegmentList();
 }
 
-// search handlers (debounced)
-let searchTimer = null;
-segSearch.addEventListener('input', ()=>{
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(()=>{
-    searchTerm = segSearch.value;
-    displayedCount = 100; // reset page
-    renderSegmentList();
-  }, 220);
+segSearch.addEventListener('input', debounce(()=>{ displayedCount = 100; renderSegmentList(); }, 220));
+btnSearchClear.addEventListener('click', ()=>{ segSearch.value=''; renderSegmentList(); });
+
+minLenInput.addEventListener('change', ()=>{ if(currentFile) detectPrintableSegmentsChunked(parseInt(minLenInput.value || 24,10)); });
+btnLoadMore.addEventListener('click', ()=>{ displayedCount += 200; renderSegmentList(); });
+
+fileInput.addEventListener('change', (e)=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  currentName = f.name;
+  const reader = new FileReader();
+  reader.onload = (ev)=> {
+    currentFile = ev.target.result;
+    originalFile = currentFile.slice(0);
+    fileInfo.textContent = `${currentName} — ${currentFile.byteLength} bytes`;
+    detectPrintableSegmentsChunked(parseInt(minLenInput.value || 24,10));
+  };
+  reader.readAsArrayBuffer(f);
 });
-btnSearchClear.addEventListener('click', ()=>{ segSearch.value=''; searchTerm=''; displayedCount=100; renderSegmentList(); });
 
-// helper preview
-function updatePreviewOut(txt){
-  previewOut.textContent = txt.slice(0,2000);
-}
+// convenience: extract all printable
+btnExtractAll.addEventListener('click', ()=>{
+  if(!currentFile){ logd('No file loaded'); return; }
+  const bytes = new Uint8Array(currentFile);
+  let out = '';
+  for(let i=0;i<bytes.length;i++) out += (isPrintableChar(bytes[i]) || bytes[i]===9) ? String.fromCharCode(bytes[i]) : ' ';
+  out = out.replace(/\s{3,}/g, '\n');
+  segments.push({start:0,end:bytes.length,text:typeSafeString(out),type:'all-printable'});
+  renderSegmentList();
+  logd('Extracted all printable characters into a single editable segment.');
+});
 
-// gzip detection
+// gzip detection and decompression attempts
 btnTryGzip.addEventListener('click', ()=>{
   if(!currentFile){ logd('No file loaded'); return; }
   const bytes = new Uint8Array(currentFile);
@@ -342,40 +342,39 @@ btnTryGzip.addEventListener('click', ()=>{
     if(gzOffsets.length>100) break;
   }
   if(gzOffsets.length===0){ logd('No gzip headers found (0x1f8b)'); return; }
-  logd(`Found gzip headers at offsets: ${gzOffsets.slice(0,10).join(', ')} — trying to decompress first few...`);
-  let added=0;
+  logd(`Found gzip headers at offsets: ${gzOffsets.slice(0,10).join(', ')} — trying to decompress the first few...`);
+  let added = 0;
   for(const off of gzOffsets.slice(0,6)){
     try {
-      const slice = new Uint8Array(currentFile).slice(off);
+      const slice = bytes.slice(off);
       const inflated = pako.ungzip(slice);
-      let txt = new TextDecoder('utf-8', {fatal:false}).decode(inflated);
+      let txt = decodeUtf8(inflated);
       txt = typeSafeString(txt);
       if(txt.length>0){
-        segments.push({start:off,end:off+slice.length,text:txt,type:'gzip'});
+        segments.push({start:off, end: off + slice.length, text: txt, type:'gzip'});
         added++;
       }
     } catch(e){}
   }
   segments.sort((a,b)=>a.start-b.start);
   renderSegmentList();
-  logd(`Gzip attempts finished. Added ${added} candidates.`);
+  logd(`Gzip search complete. Added ${added} candidates. Select one to view text.`);
 });
 
-// find base64 inside printable segments
+// base64 decode scanning
 btnFindBase64.addEventListener('click', ()=>{
   if(!segments.length){ logd('No printable segments to scan for base64.'); return; }
   let found = 0;
   const b64RE = /[A-Za-z0-9+/]{40,}={0,2}/g;
   for(let sidx=0;sidx<segments.length;sidx++){
-    const seg=segments[sidx];
-    const text = seg.text;
-    const matches = text.match(b64RE) || [];
+    const seg = segments[sidx];
+    const matches = (seg.text.match(b64RE) || []);
     matches.forEach(m=>{
       try {
         const decoded = atob(m);
-        const printableCount = Array.from(decoded).filter(c=>{ const cc=c.charCodeAt(0); return cc>=32 && cc<=126; }).length;
+        const printableCount = Array.from(decoded).filter(c=>c.charCodeAt(0)>=32 && c.charCodeAt(0)<=126).length;
         if(printableCount / decoded.length > 0.3){
-          segments.push({start:seg.start,end:seg.end,text:typeSafeString(decoded),type:'base64-decoded'});
+          segments.push({start:seg.start, end:seg.end, text:typeSafeString(decoded), type:'base64-decoded'});
           found++;
         }
       } catch(e){}
@@ -383,48 +382,50 @@ btnFindBase64.addEventListener('click', ()=>{
   }
   segments.sort((a,b)=>a.start-b.start);
   renderSegmentList();
-  logd(`Base64 scan complete. Added ${found} decoded candidates.`);
+  logd(`Base64 scan complete. Added ${found} decoded candidates. Select one to edit.`);
 });
 
-// Extract all printable convenience
-btnExtractAll.addEventListener('click', ()=>{
-  if(!currentFile){ logd('No file loaded'); return; }
-  const bytes = new Uint8Array(currentFile);
-  let out = '';
-  for(let i=0;i<bytes.length;i++){
-    if(isPrintableChar(bytes[i]) || bytes[i]===9) out += String.fromCharCode(bytes[i]);
-    else out += ' ';
+// helper to prepare bytes for insertion given a segment and edited text
+function prepareBytesForSegment(seg, editedText){
+  if(!seg) return null;
+  try {
+    if(seg.type === 'gzip'){
+      // compress editedText as gzip of UTF-8 bytes
+      const utf8 = encodeUtf8(editedText);
+      const gz = pako.gzip(utf8);
+      return gz; // Uint8Array
+    } else if(seg.type === 'base64-decoded'){
+      // re-encode to base64 and write ASCII bytes of the base64 string
+      const b64 = btoa(editedText);
+      return encodeUtf8(b64);
+    } else {
+      // plain text -> UTF-8 bytes
+      return encodeUtf8(editedText);
+    }
+  } catch(e){
+    logd('prepareBytesForSegment failed: ' + e);
+    return null;
   }
-  out = out.replace(/\s{3,}/g, '\n');
-  segments.push({start:0,end:bytes.length,text:typeSafeString(out),type:'all-printable'});
-  renderSegmentList();
-  logd('Extracted all printable characters into a single editable segment (bottom of list).');
-});
+}
 
-// Patch & download (single-segment patch, does not modify currentFile)
-btnPatchSegment.addEventListener('click', ()=>{
-  if(selectedIndex<0){ logd('No segment selected'); return; }
-  const seg = segments[selectedIndex];
-  const newText = txtSegment.value;
-  const enc = new TextEncoder().encode(newText);
-  spliceAndDownload(seg.start, seg.end, enc, `patched-segment-${currentName}`);
-});
-
-// Save edits into memory (apply to currentFile)
+// Save edits into memory (apply to currentFile) — binary-safe with gzip/base64 handling
 btnSaveToMemory.addEventListener('click', ()=>{
-  if(selectedIndex<0){ logd('No segment selected'); return; }
+  if(selectedIndex < 0){ logd('No segment selected'); return; }
   const seg = segments[selectedIndex];
-  const newText = txtSegment.value;
-  const enc = new TextEncoder().encode(newText);
+  const edited = txtSegment.value;
+  const newBytes = prepareBytesForSegment(seg, edited);
+  if(!newBytes){ logd('Failed to prepare bytes for saving.'); return; }
+
   // backup for undo
   lastSaveBackup = currentFile.slice(0);
-  // splice into currentFile
-  currentFile = spliceArrayBuffer(currentFile, seg.start, seg.end, enc);
-  // update this segment's end and text
-  const delta = enc.length - (seg.end - seg.start);
-  seg.end = seg.start + enc.length;
-  seg.text = newText;
-  // shift subsequent segments start/end by delta
+
+  // splice
+  currentFile = spliceArrayBuffer(currentFile, seg.start, seg.end, newBytes);
+
+  // update segment meta and shift later segments
+  const delta = newBytes.length - (seg.end - seg.start);
+  seg.end = seg.start + newBytes.length;
+  seg.text = edited;
   for(let i=0;i<segments.length;i++){
     if(segments[i].start > seg.start){
       segments[i].start += delta;
@@ -435,12 +436,11 @@ btnSaveToMemory.addEventListener('click', ()=>{
   logd(`Saved edits to memory. New file length: ${currentFile.byteLength} bytes.`);
 });
 
-// Undo last save (one level)
+// Undo last save (one-level)
 btnUndoSave.addEventListener('click', ()=>{
   if(!lastSaveBackup){ logd('No undo available'); return; }
   currentFile = lastSaveBackup.slice(0);
   lastSaveBackup = null;
-  // re-run detection to refresh segments (preserve minLen)
   detectPrintableSegmentsChunked(parseInt(minLenInput.value || 24,10));
   logd('Reverted last save (restored file in memory).');
 });
@@ -448,131 +448,44 @@ btnUndoSave.addEventListener('click', ()=>{
 // Download patched whole file (currentFile may be original or modified after Save)
 btnPatchDownload.addEventListener('click', ()=>{
   if(!currentFile){ logd('No file loaded'); return; }
+  const filename = getPatchedFilename(currentName);
   const blob = new Blob([currentFile], {type:'application/octet-stream'});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download = `patched-${currentName}`;
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  logd('Download started for patched file.');
-});
-
-// utility: splice arraybuffer -> returns new ArrayBuffer
-function spliceArrayBuffer(arrayBuffer, start, end, newBytes){
-  const orig = new Uint8Array(arrayBuffer);
-  const before = orig.slice(0, start);
-  const after = orig.slice(end);
-  const out = new Uint8Array(before.length + newBytes.length + after.length);
-  out.set(before, 0);
-  out.set(newBytes, before.length);
-  out.set(after, before.length + newBytes.length);
-  return out.buffer;
-}
-
-// helper to splice & immediately download (used by segment patch)
-function spliceAndDownload(start, end, newBytes, outName){
-  const orig = new Uint8Array(currentFile);
-  const before = orig.slice(0,start);
-  const after = orig.slice(end);
-  const out = new Uint8Array(before.length + newBytes.length + after.length);
-  out.set(before, 0);
-  out.set(newBytes, before.length);
-  out.set(after, before.length + newBytes.length);
-  const blob = new Blob([out], {type:'application/octet-stream'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = outName;
+  const a = document.createElement('a'); a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  logd(`Patched bytes ${start}-${end} -> new length ${newBytes.length}. Download ready: ${outName}`);
-}
-
-// select segment by index and populate editor
-function selectSegmentByIndex(idx){
-  if(idx<0 || idx>=segments.length) return;
-  selectedIndex = idx;
-  const s = segments[idx];
-  txtSegment.value = s.text;
-  segInfo.textContent = `offset ${s.start} — ${s.end} (${s.end-s.start} bytes)  type: ${s.type}`;
-  updatePreviewOut(s.text);
-  renderSegmentList();
-}
-
-// wrapper used when user clicks filtered entry
-function selectSegmentByFilteredIndex(filteredIdx){
-  const filtered = filterSegmentsBySearch();
-  const seg = filtered[filteredIdx];
-  if(!seg) return;
-  const realIdx = segments.findIndex(s => s.start===seg.start && s.end===seg.end && s.text===seg.text);
-  selectSegmentByIndex(realIdx);
-}
-
-// filter function uses global searchTerm
-function filterSegmentsBySearch(){
-  const term = (segSearch.value || '').trim().toLowerCase();
-  if(!term) return segments;
-  const num = parseInt(term,10);
-  return segments.filter(s=>{
-    if(!isNaN(num) && s.start === num) return true;
-    if(s.start.toString().includes(term) || s.end.toString().includes(term)) return true;
-    if(s.text.toLowerCase().includes(term)) return true;
-    return false;
-  });
-}
-
-// renderSegmentList override to use filtered list and mapping
-function renderSegmentList(){
-  segList.innerHTML = '';
-  if(!segments.length){ segList.textContent = 'No printable segments detected.'; return; }
-  const frag = document.createDocumentFragment();
-  const filtered = filterSegmentsBySearch();
-  const toShow = filtered.slice(0, displayedCount);
-  for(let i=0;i<toShow.length;i++){
-    const seg = toShow[i];
-    const el = document.createElement('div');
-    el.className = 'seg' + (selectedIndex>=0 && segments[selectedIndex].start===seg.start && segments[selectedIndex].end===seg.end? ' sel':'');
-    el.innerHTML = `<div style="font-size:13px"><strong>Offset:</strong> ${seg.start} — ${seg.end} (${seg.end-seg.start} bytes)</div>
-                    <div style="margin-top:6px;color:var(--muted);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${seg.text.slice(0,260)}</div>`;
-    ((idx)=> el.addEventListener('click', ()=> selectSegmentByFilteredIndex(idx)))(i);
-    frag.appendChild(el);
-  }
-  segList.appendChild(frag);
-  if(filtered.length > displayedCount){
-    const more = document.createElement('div');
-    more.style.textAlign='center';
-    more.innerHTML = `<button class="btn alt" id="btnMoreInner">Show ${filtered.length - displayedCount} more</button>`;
-    segList.appendChild(more);
-    document.getElementById('btnMoreInner').addEventListener('click', ()=>{
-      displayedCount += 200;
-      renderSegmentList();
-    });
-  }
-}
-
-// load-more button resets displayedCount
-btnLoadMore.addEventListener('click', ()=>{ displayedCount += 200; renderSegmentList(); });
-
-// initial state helpers: clear selection if minLen changed
-minLenInput.addEventListener('change', ()=> {
-  if(currentFile) detectPrintableSegmentsChunked(parseInt(minLenInput.value || 24,10));
+  logd('Download started for patched file: ' + filename);
 });
 
-// small utility: auto-parse when user edits selection and clicks Save - we simply save text as-is (UTF-8)
-txtSegment.addEventListener('input', ()=> {
-  // keep preview updated but truncated
-  updatePreviewOut(txtSegment.value);
+// Patch and download only the selected segment (spliced into file and returned)
+btnPatchSegment.addEventListener('click', ()=>{
+  if(selectedIndex < 0){ logd('No segment selected'); return; }
+  const seg = segments[selectedIndex];
+  const edited = txtSegment.value;
+  const newBytes = prepareBytesForSegment(seg, edited);
+  if(!newBytes){ logd('Failed to prepare bytes for segment patch.'); return; }
+
+  // splice and download
+  const orig = new Uint8Array(currentFile);
+  const before = orig.slice(0, seg.start);
+  const after = orig.slice(seg.end);
+  const out = new Uint8Array(before.length + newBytes.length + after.length);
+  out.set(before, 0);
+  out.set(newBytes, before.length);
+  out.set(after, before.length + newBytes.length);
+  const blob = new Blob([out.buffer], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `patched-segment-${currentName}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logd('Segment patched and download started.');
 });
 
-// helper: small throttle for UI
+// utility: debounce
 function debounce(fn, wait){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), wait); }; }
 
-// When file changed externally, reset
-window.addEventListener('beforeunload', ()=> {
-  // nothing special, file isn't stored server-side
-});
-
-// initial doc ready
-document.addEventListener('DOMContentLoaded', ()=> {
-  // nothing to init beyond handlers
-});
-
+// initial UI ready
+logd('Editor ready — load a metadata file to start.');
 </script>
 </body>
 </html>
