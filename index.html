@@ -487,5 +487,146 @@ function debounce(fn, wait){ let t; return (...a)=>{ clearTimeout(t); t=setTimeo
 // initial UI ready
 logd('Editor ready — load a metadata file to start.');
 </script>
+  <script>
+(() => {
+  const fileInput = document.getElementById('fileInput');
+  const segList = document.getElementById('segList');
+  const diag = document.getElementById('diag');
+  const minLenInput = document.getElementById('minLen');
+
+  function isPrintable(b) { return b >= 32 && b <= 126; }
+
+  function decodeAscii(bytes) {
+    // decode latin1 so bytes map directly; then replace non-printables
+    return new TextDecoder('latin1').decode(bytes);
+  }
+  function decodeUtf16le(bytes) {
+    return new TextDecoder('utf-16le').decode(bytes);
+  }
+
+  function extractAsciiRuns(u8, minLen) {
+    const runs = [];
+    let i = 0;
+    while (i < u8.length) {
+      if (isPrintable(u8[i])) {
+        const start = i;
+        while (i < u8.length && isPrintable(u8[i])) i++;
+        const len = i - start;
+        if (len >= minLen) runs.push({offset: start, length: len, text: decodeAscii(u8.slice(start, i)), encoding: 'ASCII'});
+      } else {
+        // if we encounter 0x00: treat as separator (advance)
+        i++;
+      }
+    }
+    return runs;
+  }
+
+  function extractUtf16leRuns(u8, minChars) {
+    const runs = [];
+    let i = 0;
+    while (i + 1 < u8.length) {
+      // printable byte then 0x00 pattern is an indicator for UTF-16LE (simple heuristic)
+      if (isPrintable(u8[i]) && u8[i+1] === 0) {
+        const start = i;
+        let chars = 0;
+        while (i + 1 < u8.length && isPrintable(u8[i]) && u8[i+1] === 0) {
+          chars++; i += 2;
+        }
+        if (chars >= minChars) {
+          const bytes = u8.slice(start, i);
+          runs.push({offset: start, length: bytes.length, text: decodeUtf16le(bytes), encoding: 'UTF-16LE'});
+        }
+      } else {
+        i++;
+      }
+    }
+    return runs;
+  }
+
+  // Optional: detect 4-byte little-endian length-prefixed strings: [len(uint32)][data...]
+  function extractLenPrefixed(u8, minLen) {
+    const runs = [];
+    const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    for (let i = 0; i + 4 < u8.length; ) {
+      const len = view.getUint32(i, true);
+      if (len >= minLen && i + 4 + len <= u8.length) {
+        // check that data looks printable or UTF-16
+        const slice = u8.slice(i+4, i+4+len);
+        // quick heuristic: check how many printable bytes
+        let printableCount = 0;
+        for (let b of slice) if (isPrintable(b)) printableCount++;
+        if (printableCount / slice.length > 0.6) {
+          runs.push({offset: i+4, length: slice.length, text: decodeAscii(slice), encoding: 'LEN-PREF-ASCII', headerOffset: i});
+          i += 4 + len;
+          continue;
+        }
+      }
+      i++;
+    }
+    return runs;
+  }
+
+  function uniqueByOffset(list) {
+    // sort & dedupe by offset (keep longest)
+    list.sort((a,b)=>a.offset - b.offset || b.length - a.length);
+    const out = [];
+    const seen = new Set();
+    for (const item of list) {
+      if (!seen.has(item.offset)) {
+        out.push(item);
+        seen.add(item.offset);
+      }
+    }
+    return out;
+  }
+
+  function showSegments(segments) {
+    segList.innerHTML = '';
+    if (!segments.length) segList.innerHTML = '<div class="muted">No segments found</div>';
+    for (const s of segments) {
+      const el = document.createElement('div');
+      el.className = 'seg';
+      el.dataset.offset = s.offset;
+      el.innerHTML = `<div style="font-family:monospace;font-size:12px;color:var(--muted)">0x${s.offset.toString(16)} • ${s.length} bytes • ${s.encoding}</div>
+      <div class="preview" style="margin-top:6px;max-height:120px;white-space:pre-wrap">${escapeHtml(s.text.slice(0,400))}</div>`;
+      el.addEventListener('click', ()=> {
+        document.querySelectorAll('.seg').forEach(x=>x.classList.remove('sel'));
+        el.classList.add('sel');
+        // show full in diag
+        diag.textContent = `Offset 0x${s.offset.toString(16)} • ${s.length} bytes • ${s.encoding}\n\n` + s.text;
+      });
+      segList.appendChild(el);
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  }
+
+  fileInput.addEventListener('change', async (ev) => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    diag.textContent = 'Reading file...';
+    const ab = await f.arrayBuffer();
+    const u8 = new Uint8Array(ab);
+    const minLen = parseInt(minLenInput.value || '24', 10);
+
+    // run multiple strategies
+    diag.textContent = 'Scanning for ASCII runs...';
+    const ascii = extractAsciiRuns(u8, minLen);
+    diag.textContent = `Found ${ascii.length} ASCII runs (len>=${minLen}). Checking UTF-16LE...`;
+    const utf16 = extractUtf16leRuns(u8, Math.floor(minLen/2));
+    diag.textContent = `Found ${utf16.length} UTF-16LE runs. Checking length-prefixed (heuristic)...`;
+    const lpf = extractLenPrefixed(u8, minLen);
+
+    // combine & dedupe
+    const combined = uniqueByOffset([...ascii, ...utf16, ...lpf]);
+    diag.textContent = `Total segments (deduped by offset): ${combined.length}. Displaying first 500...`;
+
+    showSegments(combined.slice(0, 500));
+    diag.textContent = `Done — showing ${Math.min(500, combined.length)} segments. Use MinLen to adjust sensitivity.`;
+  });
+})();
+</script>
 </body>
 </html>
