@@ -119,7 +119,6 @@
 // Utility helpers
 function isPrintable(b){ return b >= 32 && b <= 126; }
 function decodeAscii(bytes){
-  // map bytes directly to characters 0-255 using latin1
   const decoder = new TextDecoder('latin1');
   return decoder.decode(bytes);
 }
@@ -128,13 +127,11 @@ function decodeUtf16le(bytes){
   return decoder.decode(bytes);
 }
 function encodeAsciiStr(s){
-  // produce single-byte array; characters outside 0..255 are replaced
   const arr = new Uint8Array(s.length);
   for(let i=0;i<s.length;i++){ let c = s.charCodeAt(i); arr[i] = (c & 0xFF); }
   return arr;
 }
 function encodeUtf16leStr(s){
-  // little-endian 2 bytes per char
   const out = new Uint8Array(s.length*2);
   for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i); out[i*2]=c&0xFF; out[i*2+1]=(c>>8)&0xFF; }
   return out;
@@ -168,7 +165,7 @@ const btnRevert = document.getElementById('btnRevert');
 const btnExtractAll = document.getElementById('btnExtractAll');
 const btnLoadMore = document.getElementById('btnLoadMore');
 
-// Extraction heuristics
+// Extraction heuristics (non-blocking scanner uses these same heuristics)
 function extractAsciiRuns(u8, minLen){
   const runs=[];
   let i=0;
@@ -203,7 +200,6 @@ function extractLenPrefixed(u8, minLen){
     const len = view.getUint32(i, true);
     if(len>=minLen && i+4+len <= u8.length){
       const slice = u8.slice(i+4, i+4+len);
-      // quick printable ratio
       let printable=0; for(let b of slice) if(isPrintable(b)) printable++;
       if(slice.length>0 && printable/slice.length>0.6){
         runs.push({offset:i+4,length:slice.length,text:decodeAscii(slice),encoding:'LEN-PREF-ASCII',headerOffset:i});
@@ -263,14 +259,13 @@ async function scanBuffer(){
         }
       }
       if (chars >= minUtfChars) {
-        // only store preview now to avoid copying huge slices
         const length = chars * 2;
         const previewBytes = u8.slice(start, start + Math.min(length, PREVIEW_CHARS*2));
         segments.push({offset: start, length: length, encoding: 'UTF-16LE', previewBytes});
         found++;
         if (segments.length >= MAX_SEGMENTS) break;
       }
-      continue; // we've advanced i already
+      continue;
     }
 
     // ASCII run
@@ -311,11 +306,9 @@ async function scanBuffer(){
     } else {
       s.text = decodeAscii(s.previewBytes);
     }
-    // remove previewBytes to free memory
     delete s.previewBytes;
   }
 
-  // dedupe & sort by offset (keep first occurrence)
   segments.sort((a,b) => a.offset - b.offset || b.length - a.length);
   const dedup = [];
   const seen = new Set();
@@ -326,10 +319,6 @@ async function scanBuffer(){
 
   diag.textContent = `Scan complete — found ${segments.length} segments (showing first ${Math.min(displayLimit, segments.length)}).`;
   renderList();
-}
- segments (deduped). Displaying first ${Math.min(displayLimit, segments.length)}.`;
-    renderList();
-  }, 20);
 }
 
 function renderList(){
@@ -360,29 +349,105 @@ function selectSegment(s, el){
   currentSelected = Object.assign({}, s);
   encLabel.textContent = s.encoding;
   selInfo.textContent = `0x${s.offset.toString(16)} • ${s.length} bytes`;
-  // show full preview
   fullPreview.textContent = s.text;
-  // put editable text
-  if(s.encoding === 'UTF-16LE'){
-    editArea.value = s.text;
-  } else {
-    editArea.value = s.text;
-  }
+  editArea.value = s.text;
 }
 
-// File input
-fileInput.addEventListener('change', async (ev)=>{
-  const f = ev.target.files[0];
-  if(!f) return;
-  fileInfo.textContent = `Loaded: ${f.name} (${f.size} bytes)`;
-  const ab = await f.arrayBuffer();
-  originalBuffer = ab.slice(0);
-  fileBuffer = new Uint8Array(ab.slice(0));
-  fileSizeLabel.textContent = fileBuffer.length.toString();
-  diag.textContent = 'File loaded. Scanning...';
-  scanBuffer();
-});
+// ------------- Robust file loader + drag/drop + choose button -------------
+(function(){
+  const dropHintId = 'loadHintDiv';
+  try {
+    const fileLabel = document.querySelector('.filelabel');
+    if (fileLabel && !document.getElementById('visibleLoadBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'visibleLoadBtn';
+      btn.className = 'btn alt';
+      btn.style.marginLeft = '8px';
+      btn.textContent = 'Choose file';
+      btn.addEventListener('click', ()=> document.getElementById('fileInput').click());
+      fileLabel.parentNode.insertBefore(btn, fileLabel.nextSibling);
+    }
+  } catch(e){ console.error('Load btn create error', e); }
 
+  try {
+    let hint = document.getElementById(dropHintId);
+    if(!hint){
+      hint = document.createElement('div');
+      hint.id = dropHintId;
+      hint.className = 'small-muted';
+      hint.style.marginTop = '6px';
+      hint.textContent = 'You can also drag & drop global-metadata.dat onto the page.';
+      document.querySelector('.panel').appendChild(hint);
+    }
+  } catch(e){ console.error('Hint create error', e); }
+
+  const fileInputEl = document.getElementById('fileInput');
+  const diagEl = document.getElementById('diag');
+
+  function showDiag(msg){
+    if(diagEl) diagEl.textContent = msg;
+    console.log('[MetadataEditor]', msg);
+  }
+
+  function handleFileObject(file){
+    if(!file){ showDiag('No file selected'); return; }
+    showDiag(`Loaded file: ${file.name} (${file.size} bytes). Reading...`);
+    file.arrayBuffer().then(ab => {
+      try {
+        originalBuffer = ab.slice(0);
+        fileBuffer = new Uint8Array(ab.slice(0));
+        document.getElementById('fileInfo').textContent = `Loaded: ${file.name} (${file.size} bytes)`;
+        document.getElementById('fileSize').textContent = fileBuffer.length.toString();
+        showDiag('Starting incremental scan...');
+        setTimeout(()=>{ scanBuffer().catch(err=>{ console.error(err); showDiag('Scan failed: '+(err.message||err)); }); }, 20);
+      } catch(err) {
+        console.error('Read handling error', err);
+        showDiag('Error processing file: ' + (err.message || err));
+      }
+    }).catch(err=>{
+      console.error('arrayBuffer read error', err);
+      showDiag('Failed to read file: ' + (err.message || err));
+    });
+  }
+
+  if(fileInputEl){
+    try {
+      // remove previous listener if present
+      if (fileInputEl._listenerFn) fileInputEl.removeEventListener('change', fileInputEl._listenerFn);
+    } catch(e){}
+    const listener = (ev) => {
+      try {
+        const f = ev.target.files && ev.target.files[0];
+        handleFileObject(f);
+      } catch(err){
+        console.error('fileInput change error', err);
+        showDiag('fileInput handler error: '+(err.message||err));
+      }
+    };
+    fileInputEl.addEventListener('change', listener);
+    fileInputEl._listenerFn = listener;
+  } else {
+    console.warn('fileInput element not found');
+    showDiag('Internal error: file input element not found on page.');
+  }
+
+  document.body.addEventListener('dragover', (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  document.body.addEventListener('drop', (e)=>{ e.preventDefault();
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if(!f){ showDiag('No file dropped'); return; }
+    handleFileObject(f);
+  });
+
+  try {
+    if(fileInputEl && fileInputEl.files && fileInputEl.files.length > 0){
+      console.log('Auto-handling already-selected file');
+      handleFileObject(fileInputEl.files[0]);
+    }
+  } catch(e){ console.debug('no preselected file', e); }
+
+})();
+
+// ---------- UI event bindings (buttons etc.) ----------
 btnSearchClear.addEventListener('click', ()=>{ segSearch.value=''; renderList(); });
 segSearch.addEventListener('input', ()=>renderList());
 btnRescan.addEventListener('click', ()=>{ if(fileBuffer) scanBuffer(); });
@@ -394,39 +459,49 @@ btnApply.addEventListener('click', ()=>{
   let newBytes;
   if(currentSelected.encoding === 'UTF-16LE') newBytes = encodeUtf16leStr(newText);
   else newBytes = encodeAsciiStr(newText);
+
+  // if hex mode, allow editing hex (basic parsing)
+  if (btnHexEdit && btnHexEdit.textContent === 'Switch to text edit') {
+    // hex mode active -> parse hex pairs separated by spaces
+    const maybeHex = editArea.value.trim();
+    if (/^[0-9a-fA-F\s]+$/.test(maybeHex)) {
+      const hexParts = maybeHex.split(/\s+/).filter(Boolean);
+      try {
+        const arr = new Uint8Array(hexParts.length);
+        hexParts.forEach((h,i)=> arr[i]=parseInt(h,16));
+        newBytes = arr;
+      } catch(e){ /* ignore, fall back to text encoding */ }
+    }
+  }
+
   const origLen = currentSelected.length;
   if(newBytes.length <= origLen){
-    // in-place replace and pad with zeros
     fileBuffer.set(newBytes, currentSelected.offset);
     if(newBytes.length < origLen) fileBuffer.fill(0, currentSelected.offset + newBytes.length, currentSelected.offset + origLen);
     diag.textContent = `Replaced in-place at 0x${currentSelected.offset.toString(16)} (was ${origLen} bytes, now ${newBytes.length}).`;
-    // update segment text
     currentSelected.text = (currentSelected.encoding==='UTF-16LE') ? decodeUtf16le(fileBuffer.slice(currentSelected.offset, currentSelected.offset+origLen)) : decodeAscii(fileBuffer.slice(currentSelected.offset, currentSelected.offset+origLen));
     renderList();
-    selectSegment(currentSelected, document.querySelector('.seg.sel'));
+    const selEl = document.querySelector('.seg.sel');
+    if(selEl) selectSegment(currentSelected, selEl);
     fileSizeLabel.textContent = fileBuffer.length.toString();
     return;
   }
-  // newBytes longer than original
+
   if(!allowGrow.checked){
     if(!confirm('New data is longer than original segment. To keep file structure safe, uncheck "Allow grow" to prevent insertion. Choose OK to proceed with insertion (this will shift later bytes).')) return;
   }
-  // perform insertion (rebuild buffer)
+
   const delta = newBytes.length - origLen;
   const newBuf = new Uint8Array(fileBuffer.length + delta);
-  // copy pre
   newBuf.set(fileBuffer.slice(0, currentSelected.offset), 0);
-  // set new bytes
   newBuf.set(newBytes, currentSelected.offset);
-  // copy post (skip original segment length)
   newBuf.set(fileBuffer.slice(currentSelected.offset + origLen), currentSelected.offset + newBytes.length);
   fileBuffer = newBuf;
-  // update segments offsets after this offset
   for(const s of segments){ if(s.offset > currentSelected.offset){ s.offset += delta; } }
-  currentSelected.length = newBytes.length; currentSelected.text = (currentSelected.encoding==='UTF-16LE') ? decodeUtf16le(fileBuffer.slice(currentSelected.offset, currentSelected.offset+currentSelected.length)) : decodeAscii(fileBuffer.slice(currentSelected.offset, currentSelected.offset+currentSelected.length));
+  currentSelected.length = newBytes.length;
+  currentSelected.text = (currentSelected.encoding==='UTF-16LE') ? decodeUtf16le(fileBuffer.slice(currentSelected.offset, currentSelected.offset+currentSelected.length)) : decodeAscii(fileBuffer.slice(currentSelected.offset, currentSelected.offset+currentSelected.length));
   diag.textContent = `Inserted ${delta} bytes at 0x${currentSelected.offset.toString(16)} — file rebuilt. Offsets adjusted.`;
   renderList();
-  // reselect (find corresponding element)
   const el = Array.from(document.querySelectorAll('.seg')).find(x=>parseInt(x.dataset.offset,10)===currentSelected.offset);
   if(el) selectSegment(currentSelected, el);
   fileSizeLabel.textContent = fileBuffer.length.toString();
@@ -453,7 +528,7 @@ btnRevert.addEventListener('click', ()=>{
   scanBuffer();
 });
 
-// Extract all printable into a textarea (downloadable)
+// Extract all printable into a new window
 btnExtractAll.addEventListener('click', ()=>{
   if(!fileBuffer) return alert('No file loaded');
   const minLen = Math.max(4, parseInt(minLenInput.value||'24',10));
@@ -472,21 +547,16 @@ let hexMode = false;
 btnHexEdit.addEventListener('click', ()=>{
   if(!currentSelected) return alert('Select a segment first');
   if(!hexMode){
-    // switch to hex view
     const bytes = fileBuffer.slice(currentSelected.offset, currentSelected.offset+currentSelected.length);
     editArea.value = Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(' ');
     btnHexEdit.textContent = 'Switch to text edit';
     hexMode = true;
   } else {
-    // treat textarea as text
     btnHexEdit.textContent = 'Switch to hex edit';
     hexMode = false;
-    // if user modified hex and clicks apply, we will parse hex in apply path
+    editArea.value = currentSelected ? currentSelected.text : '';
   }
 });
-
-// If user edits hex and clicks apply, detect hexMode and parse accordingly
-// We'll intercept apply button click above by checking hexMode when building newBytes - handled implicitly if editArea used.
 
 // initial state
 diag.textContent = 'Ready. Load your global-metadata.dat.';
