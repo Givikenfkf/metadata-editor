@@ -222,16 +222,112 @@ function uniqueByOffset(list){
   return out;
 }
 
-function scanBuffer(){
+let _scanAbort = false;
+
+async function scanBuffer(){
   if(!fileBuffer) return;
-  const minLen = Math.max(4, parseInt(minLenInput.value || '24',10));
-  diag.textContent = 'Scanning... (this may take a few seconds)';
-  setTimeout(()=>{
-    const ascii = extractAsciiRuns(fileBuffer, minLen);
-    const utf16 = extractUtf16leRuns(fileBuffer, Math.floor(minLen/2));
-    const lpf = extractLenPrefixed(fileBuffer, minLen);
-    segments = uniqueByOffset([...ascii, ...utf16, ...lpf]);
-    diag.textContent = `Found ${segments.length} segments (deduped). Displaying first ${Math.min(displayLimit, segments.length)}.`;
+  _scanAbort = false;
+  diag.textContent = 'Scanning (incremental) — this keeps UI responsive...';
+  segments = [];
+  const u8 = fileBuffer;
+  const total = u8.length;
+  const minLen = Math.max(4, parseInt(minLenInput.value || '24', 10));
+  const minUtfChars = Math.floor(minLen/2);
+
+  // Parameters you can tweak:
+  const YIELD_EVERY = 200000; // bytes processed before yielding back to UI
+  const MAX_SEGMENTS = 200000; // safety cap to avoid runaway memory use
+  const PREVIEW_CHARS = 1000; // how much of each segment to extract for the preview
+
+  let i = 0;
+  let processedSinceYield = 0;
+  let found = 0;
+
+  // Single-pass scan that detects UTF-16LE runs first (printable + 0x00) and ASCII runs
+  while (i + 1 < total) {
+    if (_scanAbort) { diag.textContent = 'Scan aborted.'; return; }
+
+    // UTF-16LE heuristic: printable byte + 0x00 alternating
+    if (isPrintable(u8[i]) && u8[i+1] === 0) {
+      const start = i;
+      let chars = 0;
+      while (i + 1 < total && isPrintable(u8[i]) && u8[i+1] === 0) {
+        chars++; i += 2;
+        processedSinceYield += 2;
+        if (processedSinceYield >= YIELD_EVERY) {
+          processedSinceYield = 0;
+          // update progress and yield
+          diag.textContent = `Scanning (UTF-16LE) ${Math.floor(i/total*100)}% — found ${found} segments...`;
+          await new Promise(r => setTimeout(r, 0));
+          if (_scanAbort) { diag.textContent = 'Scan aborted.'; return; }
+        }
+      }
+      if (chars >= minUtfChars) {
+        // only store preview now to avoid copying huge slices
+        const length = chars * 2;
+        const previewBytes = u8.slice(start, start + Math.min(length, PREVIEW_CHARS*2));
+        segments.push({offset: start, length: length, encoding: 'UTF-16LE', previewBytes});
+        found++;
+        if (segments.length >= MAX_SEGMENTS) break;
+      }
+      continue; // we've advanced i already
+    }
+
+    // ASCII run
+    if (isPrintable(u8[i])) {
+      const start = i;
+      while (i < total && isPrintable(u8[i])) { i++; processedSinceYield++; }
+      const length = i - start;
+      if (length >= minLen) {
+        const previewBytes = u8.slice(start, start + Math.min(length, PREVIEW_CHARS));
+        segments.push({offset: start, length: length, encoding: 'ASCII', previewBytes});
+        found++;
+        if (segments.length >= MAX_SEGMENTS) break;
+      }
+      if (processedSinceYield >= YIELD_EVERY) {
+        processedSinceYield = 0;
+        diag.textContent = `Scanning (ASCII) ${Math.floor(i/total*100)}% — found ${found} segments...`;
+        await new Promise(r => setTimeout(r, 0));
+        if (_scanAbort) { diag.textContent = 'Scan aborted.'; return; }
+      }
+      continue;
+    }
+
+    // no run start — advance one byte
+    i++;
+    processedSinceYield++;
+    if (processedSinceYield >= YIELD_EVERY) {
+      processedSinceYield = 0;
+      diag.textContent = `Scanning ${Math.floor(i/total*100)}% — found ${found} segments...`;
+      await new Promise(r => setTimeout(r, 0));
+      if (_scanAbort) { diag.textContent = 'Scan aborted.'; return; }
+    }
+  }
+
+  // Finalize: convert previews to text (limited) and dedupe by offset
+  for (const s of segments) {
+    if (s.encoding === 'UTF-16LE') {
+      s.text = decodeUtf16le(s.previewBytes);
+    } else {
+      s.text = decodeAscii(s.previewBytes);
+    }
+    // remove previewBytes to free memory
+    delete s.previewBytes;
+  }
+
+  // dedupe & sort by offset (keep first occurrence)
+  segments.sort((a,b) => a.offset - b.offset || b.length - a.length);
+  const dedup = [];
+  const seen = new Set();
+  for (const it of segments) {
+    if (!seen.has(it.offset)) { dedup.push(it); seen.add(it.offset); }
+  }
+  segments = dedup;
+
+  diag.textContent = `Scan complete — found ${segments.length} segments (showing first ${Math.min(displayLimit, segments.length)}).`;
+  renderList();
+}
+ segments (deduped). Displaying first ${Math.min(displayLimit, segments.length)}.`;
     renderList();
   }, 20);
 }
