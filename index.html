@@ -32,6 +32,8 @@
   .label-small{font-size:12px;color:var(--muted)}
   .meta-row{display:flex;gap:8px;align-items:center;margin-top:8px}
   .small-muted{font-size:12px;color:var(--muted)}
+  .drop-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);z-index:9999;color:white;font-size:18px}
+  .drop-overlay.show{display:flex}
   @media (max-width:980px){ .grid{grid-template-columns:1fr} .list{height:260px} .preview{max-height:160px} }
 </style>
 </head>
@@ -49,6 +51,7 @@
       <div class="panel">
         <div class="top-row" style="margin-bottom:10px">
           <label class="filelabel">📁 Load file <input id="fileInput" type="file" accept="*" style="display:none"/></label>
+          <button id="visibleLoadBtn" class="btn alt">Choose file</button>
           <span id="fileInfo" class="muted small">No file loaded</span>
         </div>
 
@@ -115,33 +118,21 @@
     </div>
   </div>
 
+  <div id="dropOverlay" class="drop-overlay">Drop file to load</div>
+
 <script>
 // Utility helpers
 function isPrintable(b){ return b >= 32 && b <= 126; }
-function decodeAscii(bytes){
-  const decoder = new TextDecoder('latin1');
-  return decoder.decode(bytes);
-}
-function decodeUtf16le(bytes){
-  const decoder = new TextDecoder('utf-16le');
-  return decoder.decode(bytes);
-}
-function encodeAsciiStr(s){
-  const arr = new Uint8Array(s.length);
-  for(let i=0;i<s.length;i++){ let c = s.charCodeAt(i); arr[i] = (c & 0xFF); }
-  return arr;
-}
-function encodeUtf16leStr(s){
-  const out = new Uint8Array(s.length*2);
-  for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i); out[i*2]=c&0xFF; out[i*2+1]=(c>>8)&0xFF; }
-  return out;
-}
+function decodeAscii(bytes){ const decoder = new TextDecoder('latin1'); return decoder.decode(bytes); }
+function decodeUtf16le(bytes){ const decoder = new TextDecoder('utf-16le'); return decoder.decode(bytes); }
+function encodeAsciiStr(s){ const arr=new Uint8Array(s.length); for(let i=0;i<s.length;i++){ arr[i]=s.charCodeAt(i)&0xFF; } return arr; }
+function encodeUtf16leStr(s){ const out=new Uint8Array(s.length*2); for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i); out[i*2]=c&0xFF; out[i*2+1]=(c>>8)&0xFF; } return out; }
 
-let originalBuffer = null; // ArrayBuffer
-let fileBuffer = null; // Uint8Array (mutable copy)
-let segments = []; // detected segments
+let originalBuffer = null;
+let fileBuffer = null;
+let segments = [];
 let displayLimit = 500;
-let currentSelected = null; // {offset,length,text,encoding}
+let currentSelected = null;
 
 // DOM refs
 const fileInput = document.getElementById('fileInput');
@@ -164,26 +155,22 @@ const btnHexEdit = document.getElementById('btnHexEdit');
 const btnRevert = document.getElementById('btnRevert');
 const btnExtractAll = document.getElementById('btnExtractAll');
 const btnLoadMore = document.getElementById('btnLoadMore');
+const visibleLoadBtn = document.getElementById('visibleLoadBtn');
+const dropOverlay = document.getElementById('dropOverlay');
 
-// Extraction heuristics (non-blocking scanner uses these same heuristics)
+// Extraction heuristics
 function extractAsciiRuns(u8, minLen){
-  const runs=[];
-  let i=0;
+  const runs=[]; let i=0;
   while(i<u8.length){
     if(isPrintable(u8[i])){
-      const start=i;
-      while(i<u8.length && isPrintable(u8[i])) i++;
-      const len=i-start;
-      if(len>=minLen) runs.push({offset:start,length:len,text:decodeAscii(u8.slice(start,i)),encoding:'ASCII'});
-    } else {
-      i++;
-    }
+      const start=i; while(i<u8.length && isPrintable(u8[i])) i++;
+      const len=i-start; if(len>=minLen) runs.push({offset:start,length:len,text:decodeAscii(u8.slice(start,i)),encoding:'ASCII'});
+    } else i++;
   }
   return runs;
 }
 function extractUtf16leRuns(u8, minChars){
-  const runs=[];
-  let i=0;
+  const runs=[]; let i=0;
   while(i+1<u8.length){
     if(isPrintable(u8[i]) && u8[i+1]===0){
       const start=i; let chars=0;
@@ -194,13 +181,12 @@ function extractUtf16leRuns(u8, minChars){
   return runs;
 }
 function extractLenPrefixed(u8, minLen){
-  const runs=[];
-  const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const runs=[]; const view=new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   for(let i=0;i+4<u8.length;){
-    const len = view.getUint32(i, true);
-    if(len>=minLen && i+4+len <= u8.length){
-      const slice = u8.slice(i+4, i+4+len);
-      let printable=0; for(let b of slice) if(isPrintable(b)) printable++;
+    const len=view.getUint32(i,true);
+    if(len>=minLen && i+4+len<=u8.length){
+      const slice=u8.slice(i+4,i+4+len);
+      let printable=0; for(const b of slice) if(isPrintable(b)) printable++;
       if(slice.length>0 && printable/slice.length>0.6){
         runs.push({offset:i+4,length:slice.length,text:decodeAscii(slice),encoding:'LEN-PREF-ASCII',headerOffset:i});
         i += 4 + len; continue;
@@ -220,6 +206,7 @@ function uniqueByOffset(list){
 
 let _scanAbort = false;
 
+// ---------- Incremental (non-freezing) scanner ----------
 async function scanBuffer(){
   if(!fileBuffer) return;
   _scanAbort = false;
@@ -230,31 +217,25 @@ async function scanBuffer(){
   const minLen = Math.max(4, parseInt(minLenInput.value || '24', 10));
   const minUtfChars = Math.floor(minLen/2);
 
-  // Parameters you can tweak:
-  const YIELD_EVERY = 200000; // bytes processed before yielding back to UI
-  const MAX_SEGMENTS = 200000; // safety cap to avoid runaway memory use
-  const PREVIEW_CHARS = 1000; // how much of each segment to extract for the preview
+  const YIELD_EVERY = 200000;
+  const MAX_SEGMENTS = 200000;
+  const PREVIEW_CHARS = 1000;
 
   let i = 0;
   let processedSinceYield = 0;
   let found = 0;
 
-  // Single-pass scan that detects UTF-16LE runs first (printable + 0x00) and ASCII runs
   while (i + 1 < total) {
     if (_scanAbort) { diag.textContent = 'Scan aborted.'; return; }
 
-    // UTF-16LE heuristic: printable byte + 0x00 alternating
     if (isPrintable(u8[i]) && u8[i+1] === 0) {
-      const start = i;
-      let chars = 0;
+      const start = i; let chars = 0;
       while (i + 1 < total && isPrintable(u8[i]) && u8[i+1] === 0) {
-        chars++; i += 2;
-        processedSinceYield += 2;
+        chars++; i += 2; processedSinceYield += 2;
         if (processedSinceYield >= YIELD_EVERY) {
           processedSinceYield = 0;
-          // update progress and yield
           diag.textContent = `Scanning (UTF-16LE) ${Math.floor(i/total*100)}% — found ${found} segments...`;
-          await new Promise(r => setTimeout(r, 0));
+          await new Promise(r=>setTimeout(r,0));
           if (_scanAbort) { diag.textContent = 'Scan aborted.'; return; }
         }
       }
@@ -268,7 +249,6 @@ async function scanBuffer(){
       continue;
     }
 
-    // ASCII run
     if (isPrintable(u8[i])) {
       const start = i;
       while (i < total && isPrintable(u8[i])) { i++; processedSinceYield++; }
@@ -282,55 +262,50 @@ async function scanBuffer(){
       if (processedSinceYield >= YIELD_EVERY) {
         processedSinceYield = 0;
         diag.textContent = `Scanning (ASCII) ${Math.floor(i/total*100)}% — found ${found} segments...`;
-        await new Promise(r => setTimeout(r, 0));
+        await new Promise(r=>setTimeout(r,0));
         if (_scanAbort) { diag.textContent = 'Scan aborted.'; return; }
       }
       continue;
     }
 
-    // no run start — advance one byte
-    i++;
-    processedSinceYield++;
+    i++; processedSinceYield++;
     if (processedSinceYield >= YIELD_EVERY) {
       processedSinceYield = 0;
       diag.textContent = `Scanning ${Math.floor(i/total*100)}% — found ${found} segments...`;
-      await new Promise(r => setTimeout(r, 0));
+      await new Promise(r=>setTimeout(r,0));
       if (_scanAbort) { diag.textContent = 'Scan aborted.'; return; }
     }
   }
 
-  // Finalize: convert previews to text (limited) and dedupe by offset
   for (const s of segments) {
-    if (s.encoding === 'UTF-16LE') {
-      s.text = decodeUtf16le(s.previewBytes);
-    } else {
-      s.text = decodeAscii(s.previewBytes);
-    }
+    if (s.encoding === 'UTF-16LE') s.text = decodeUtf16le(s.previewBytes);
+    else s.text = decodeAscii(s.previewBytes);
     delete s.previewBytes;
   }
 
   segments.sort((a,b) => a.offset - b.offset || b.length - a.length);
-  const dedup = [];
-  const seen = new Set();
-  for (const it of segments) {
-    if (!seen.has(it.offset)) { dedup.push(it); seen.add(it.offset); }
-  }
+  const dedup=[]; const seen=new Set();
+  for(const it of segments){ if(!seen.has(it.offset)){ dedup.push(it); seen.add(it.offset);} }
   segments = dedup;
 
   diag.textContent = `Scan complete — found ${segments.length} segments (showing first ${Math.min(displayLimit, segments.length)}).`;
   renderList();
 }
 
+// UI: render list (fixed load-more behavior)
 function renderList(){
   segList.innerHTML = '';
   const q = segSearch.value.trim().toLowerCase();
-  let count=0;
-  for(const s of segments){
-    if(count>=displayLimit) break;
+  let count = 0;
+  let matchedTotal = 0;
+  for (const s of segments) {
     const txtLower = (s.text||'').toLowerCase();
-    const offHex = '0x'+s.offset.toString(16);
-    if(q && !(txtLower.includes(q) || offHex.includes(q))) continue;
-    const el = document.createElement('div'); el.className='seg';
+    const offHex = '0x' + s.offset.toString(16);
+    if (q && !(txtLower.includes(q) || offHex.includes(q))) continue;
+    matchedTotal++;
+    if (count >= displayLimit) continue;
+    const el = document.createElement('div');
+    el.className = 'seg';
     el.dataset.offset = s.offset;
     el.innerHTML = `<div style="font-family:monospace;font-size:12px;color:var(--muted)">0x${s.offset.toString(16)} • ${s.length} bytes • ${s.encoding}</div>
       <div class="preview" style="margin-top:6px;max-height:80px;white-space:pre-wrap">${escapeHtml(s.text.slice(0,400))}</div>`;
@@ -338,11 +313,22 @@ function renderList(){
     segList.appendChild(el);
     count++;
   }
-  if(count===0) segList.innerHTML='<div class="muted">No segments found</div>';
+
+  if (matchedTotal === 0) segList.innerHTML = '<div class="muted">No segments found</div>';
+
+  const showing = Math.min(displayLimit, matchedTotal);
+  diag.textContent = `Showing ${showing} of ${matchedTotal} matching segments (display limit ${displayLimit}).`;
+
+  if (matchedTotal > showing) {
+    btnLoadMore.disabled = false;
+    btnLoadMore.textContent = 'Load more';
+  } else {
+    btnLoadMore.disabled = true;
+    btnLoadMore.textContent = 'All loaded';
+  }
 }
 
 function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-
 function selectSegment(s, el){
   document.querySelectorAll('.seg').forEach(x=>x.classList.remove('sel'));
   el.classList.add('sel');
@@ -381,11 +367,8 @@ function selectSegment(s, el){
     }
   } catch(e){ console.error('Hint create error', e); }
 
-  const fileInputEl = document.getElementById('fileInput');
-  const diagEl = document.getElementById('diag');
-
   function showDiag(msg){
-    if(diagEl) diagEl.textContent = msg;
+    if(diag) diag.textContent = msg;
     console.log('[MetadataEditor]', msg);
   }
 
@@ -396,9 +379,10 @@ function selectSegment(s, el){
       try {
         originalBuffer = ab.slice(0);
         fileBuffer = new Uint8Array(ab.slice(0));
-        document.getElementById('fileInfo').textContent = `Loaded: ${file.name} (${file.size} bytes)`;
-        document.getElementById('fileSize').textContent = fileBuffer.length.toString();
-        showDiag('Starting incremental scan...');
+        fileInfo.textContent = `Loaded: ${file.name} (${file.size} bytes)`;
+        fileSizeLabel.textContent = fileBuffer.length.toString();
+        const hex = Array.from(fileBuffer.slice(0,64)).map(b=>b.toString(16).padStart(2,'0')).join(' ');
+        diag.textContent = `File read — first bytes: ${hex}\nStarting incremental scan...`;
         setTimeout(()=>{ scanBuffer().catch(err=>{ console.error(err); showDiag('Scan failed: '+(err.message||err)); }); }, 20);
       } catch(err) {
         console.error('Read handling error', err);
@@ -410,11 +394,9 @@ function selectSegment(s, el){
     });
   }
 
-  if(fileInputEl){
-    try {
-      // remove previous listener if present
-      if (fileInputEl._listenerFn) fileInputEl.removeEventListener('change', fileInputEl._listenerFn);
-    } catch(e){}
+  if(visibleLoadBtn) visibleLoadBtn.addEventListener('click', ()=> fileInput.click());
+  if(fileInput){
+    try { if (fileInput._listenerFn) fileInput.removeEventListener('change', fileInput._listenerFn); } catch(e){}
     const listener = (ev) => {
       try {
         const f = ev.target.files && ev.target.files[0];
@@ -424,24 +406,26 @@ function selectSegment(s, el){
         showDiag('fileInput handler error: '+(err.message||err));
       }
     };
-    fileInputEl.addEventListener('change', listener);
-    fileInputEl._listenerFn = listener;
+    fileInput.addEventListener('change', listener);
+    fileInput._listenerFn = listener;
   } else {
     console.warn('fileInput element not found');
     showDiag('Internal error: file input element not found on page.');
   }
 
-  document.body.addEventListener('dragover', (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-  document.body.addEventListener('drop', (e)=>{ e.preventDefault();
+  // drag & drop
+  document.body.addEventListener('dragover', (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; dropOverlay.classList.add('show'); });
+  document.body.addEventListener('dragleave', (e)=>{ dropOverlay.classList.remove('show'); });
+  document.body.addEventListener('drop', (e)=>{ e.preventDefault(); dropOverlay.classList.remove('show');
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
     if(!f){ showDiag('No file dropped'); return; }
     handleFileObject(f);
   });
 
   try {
-    if(fileInputEl && fileInputEl.files && fileInputEl.files.length > 0){
+    if(fileInput && fileInput.files && fileInput.files.length > 0){
       console.log('Auto-handling already-selected file');
-      handleFileObject(fileInputEl.files[0]);
+      handleFileObject(fileInput.files[0]);
     }
   } catch(e){ console.debug('no preselected file', e); }
 
@@ -460,9 +444,8 @@ btnApply.addEventListener('click', ()=>{
   if(currentSelected.encoding === 'UTF-16LE') newBytes = encodeUtf16leStr(newText);
   else newBytes = encodeAsciiStr(newText);
 
-  // if hex mode, allow editing hex (basic parsing)
+  // if hex mode, parse hex pairs separated by spaces
   if (btnHexEdit && btnHexEdit.textContent === 'Switch to text edit') {
-    // hex mode active -> parse hex pairs separated by spaces
     const maybeHex = editArea.value.trim();
     if (/^[0-9a-fA-F\s]+$/.test(maybeHex)) {
       const hexParts = maybeHex.split(/\s+/).filter(Boolean);
@@ -470,7 +453,7 @@ btnApply.addEventListener('click', ()=>{
         const arr = new Uint8Array(hexParts.length);
         hexParts.forEach((h,i)=> arr[i]=parseInt(h,16));
         newBytes = arr;
-      } catch(e){ /* ignore, fall back to text encoding */ }
+      } catch(e){ /* ignore */ }
     }
   }
 
@@ -539,8 +522,20 @@ btnExtractAll.addEventListener('click', ()=>{
   w.document.write('<pre style="white-space:pre-wrap;font-family:monospace">'+escapeHtml(out)+'</pre>');
 });
 
-// Load more
-btnLoadMore.addEventListener('click', ()=>{ displayLimit += 500; renderList(); });
+// Load more (fixed)
+btnLoadMore.addEventListener('click', ()=>{
+  const prev = displayLimit;
+  displayLimit += 500;
+  renderList();
+  diag.textContent = `Increased display limit from ${prev} to ${displayLimit}.`;
+  setTimeout(()=>{
+    const segs = segList.querySelectorAll('.seg');
+    if (segs.length > 0) {
+      const idx = Math.min(segs.length - 1, prev);
+      if (segs[idx]) segs[idx].scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  }, 80);
+});
 
 // Hex edit toggle
 let hexMode = false;
@@ -558,7 +553,7 @@ btnHexEdit.addEventListener('click', ()=>{
   }
 });
 
-// initial state
+// initial
 diag.textContent = 'Ready. Load your global-metadata.dat.';
 </script>
 </body>
