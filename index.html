@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>GorillaTag Metadata editor stuff</title>
+<title>GorillaTag Metadata Helper — Slim + QoL</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#071027;--panel:#091322;--muted:#9aa6bf;--accent:#34d399}
@@ -16,10 +16,9 @@
   .grid{display:grid;grid-template-columns:320px 1fr;gap:12px;margin-top:12px}
   .panel{background:var(--panel);padding:12px;border-radius:10px}
   .list{height:420px;overflow:auto;border-radius:8px;border:1px solid rgba(255,255,255,0.03);padding:8px;background:rgba(255,255,255,0.01)}
-  .seg{padding:8px;border-radius:6px;margin-bottom:6px;background:transparent;cursor:pointer;display:flex;flex-direction:column}
-  .seg-meta{display:flex;justify-content:space-between;align-items:center}
+  .seg{padding:8px;border-radius:6px;margin-bottom:6px;cursor:pointer}
   .seg.sel{outline:2px solid rgba(52,211,153,0.12);background:linear-gradient(90deg, rgba(52,211,153,0.03), rgba(96,165,250,0.01))}
-  textarea,input,button,select{font:inherit}
+  textarea,input,button{font:inherit}
   textarea{width:100%;height:180px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit;padding:8px;font-family:monospace}
   .btn{padding:8px 12px;border-radius:8px;border:none;background:linear-gradient(180deg,var(--accent),#60a5fa);color:#042233;font-weight:600;cursor:pointer}
   .btn.alt{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
@@ -27,343 +26,138 @@
   .search{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
   .small{font-size:13px;color:var(--muted)}
   .preview{white-space:pre-wrap;background:rgba(255,255,255,0.01);padding:8px;border-radius:8px;margin-top:8px;font-family:monospace;max-height:220px;overflow:auto}
-  .badge{background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:999px;font-size:12px;color:var(--muted);margin-left:8px}
-  .tools{display:flex;gap:6px;align-items:center}
-  .muted-ghost{color:rgba(255,255,255,0.5);font-size:12px}
-  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);z-index:9999}
-  .overlay.show{display:flex}
-  .modal{background:#071a2a;padding:12px;border-radius:8px;max-width:720px;width:92%;color:#e6eef8}
   @media (max-width:900px){ .grid{grid-template-columns:1fr} .list{height:260px} }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div>
-        <h1>GorillaTag Metadata editor stuff</h1>
-        <div class="muted">Tools for metadata modding in gorilla tag, should also work for other games.</div>
-      </div>
-      <div style="margin-left:auto" class="muted small">Made by slowfox>
-    </header>
+<div class="wrap">
+<header>
+  <div>
+    <h1>GorillaTag Metadata Helper</h1>
+    <div class="muted">Lightweight editor for GorillaTag-style metadata strings</div>
+  </div>
+</header>
 
-    <div class="grid">
-      <div class="panel">
-        <div class="row" style="margin-bottom:8px">
-          <label class="btn alt" style="display:inline-flex;align-items:center;gap:8px">📁 Load file<input id="fileInput" type="file" accept="*" style="display:none"/></label>
-          <button id="btnRescan" class="btn alt">Rescan</button>
-          <div style="margin-left:auto" id="fileInfo" class="small">No file</div>
-        </div>
-
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-          <input id="segSearch" class="search" placeholder="search text or 0xoffset" />
-          <button id="btnClearSearch" class="btn alt">✖</button>
-        </div>
-
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <div class="small">Detected strings <span id="dupCount" class="badge">0 duplicates</span></div>
-          <div class="small">Min length: <input id="minLen" type="number" value="6" style="width:56px;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit"/></div>
-        </div>
-
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button id="btnExtract" class="btn">Export strings</button>
-          <button id="btnReplaceAll" class="btn alt">Replace all matches</button>
-          <button id="btnBookmarks" class="btn alt">Show bookmarks</button>
-          <button id="btnToggleDuplicates" class="btn alt">Toggle duplicates</button>
-        </div>
-
-        <div id="segList" class="list" aria-live="polite"></div>
-
-        <div class="small" style="margin-top:8px">Tips: Use search to scope. Edits are in-place by default to avoid breaking offsets. Use Undo (Ctrl+Z) / Redo (Ctrl+Y).</div>
-      </div>
-
-      <div class="panel">
-        <div style="display:flex;gap:12px;align-items:flex-start">
-          <div style="flex:1">
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-              <div class="small">Selected:</div>
-              <div id="selInfo" style="font-family:monospace">(none)</div>
-              <div style="margin-left:6px" id="refBadge" class="badge">0 refs</div>
-              <div style="margin-left:auto" class="small">Encoding: <span id="encLabel">-</span> <span id="encConf" class="muted-ghost">(conf)</span></div>
-            </div>
-
-            <textarea id="editArea" placeholder="Select a detected string to edit..."></textarea>
-
-            <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-              <button id="btnApply" class="btn">Apply (overwrite)</button>
-              <button id="btnUndo" class="btn alt">Undo</button>
-              <button id="btnRedo" class="btn alt">Redo</button>
-              <label class="small" style="margin-left:auto"><input id="allowGrow" type="checkbox"/> Allow grow (advanced)</label>
-            </div>
-
-            <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-              <button id="btnDownload" class="btn">Download</button>
-              <button id="btnRevert" class="btn alt">Revert</button>
-              <div style="margin-left:auto" class="small">Bytes: <span id="fileSize">0</span></div>
-            </div>
-
-            <div style="margin-top:10px">
-              <div class="small">Preview</div>
-              <div id="fullPreview" class="preview">—</div>
-            </div>
-
-            <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-              <button id="btnCopyOffset" class="btn alt">Copy offset</button>
-              <button id="btnJumpNext" class="btn alt">Next ref</button>
-              <button id="btnJumpPrev" class="btn alt">Prev ref</button>
-              <div style="margin-left:auto" class="small">Bookmarks: <span id="bmCount">0</span></div>
-            </div>
-
-          </div>
-        </div>
-      </div>
+<div class="grid">
+  <div class="panel">
+    <div class="row" style="margin-bottom:8px">
+      <label class="btn alt">📁 Load<input id="fileInput" type="file" hidden></label>
+      <button id="btnRescan" class="btn alt">Rescan</button>
+      <div id="fileInfo" class="small" style="margin-left:auto">No file</div>
     </div>
+    <input id="segSearch" class="search" placeholder="search text or 0xoffset" />
+    <div id="segList" class="list"></div>
   </div>
 
-  <div id="modal" class="overlay"><div class="modal" id="modalInner"></div></div>
+  <div class="panel">
+    <div class="small">Selected:</div>
+    <div id="selInfo" style="font-family:monospace">(none)</div>
+    <textarea id="editArea" placeholder="Select a string to edit"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="btnApply" class="btn">Apply</button>
+      <button id="btnDownload" class="btn">Download</button>
+      <button id="btnRevert" class="btn alt">Revert</button>
+    </div>
+    <div id="fullPreview" class="preview">—</div>
+  </div>
+</div>
+</div>
 
 <script>
-// --- QoL-enhanced editor ---
 const fileInput = document.getElementById('fileInput');
 const fileInfo = document.getElementById('fileInfo');
 const segList = document.getElementById('segList');
 const segSearch = document.getElementById('segSearch');
-const btnClearSearch = document.getElementById('btnClearSearch');
-const minLenInput = document.getElementById('minLen');
 const editArea = document.getElementById('editArea');
-const btnApply = document.getElementById('btnApply');
-const btnExtract = document.getElementById('btnExtract');
-const btnDownload = document.getElementById('btnDownload');
-const btnRevert = document.getElementById('btnRevert');
-const fileSizeLabel = document.getElementById('fileSize');
-const encLabel = document.getElementById('encLabel');
-const encConf = document.getElementById('encConf');
 const selInfo = document.getElementById('selInfo');
 const fullPreview = document.getElementById('fullPreview');
+const btnApply = document.getElementById('btnApply');
+const btnDownload = document.getElementById('btnDownload');
+const btnRevert = document.getElementById('btnRevert');
 const btnRescan = document.getElementById('btnRescan');
-const btnReplaceAll = document.getElementById('btnReplaceAll');
-const allowGrow = document.getElementById('allowGrow');
-const btnUndo = document.getElementById('btnUndo');
-const btnRedo = document.getElementById('btnRedo');
-const btnBookmarks = document.getElementById('btnBookmarks');
-const btnToggleDuplicates = document.getElementById('btnToggleDuplicates');
-const dupCount = document.getElementById('dupCount');
-const refBadge = document.getElementById('refBadge');
-const btnCopyOffset = document.getElementById('btnCopyOffset');
-const btnJumpNext = document.getElementById('btnJumpNext');
-const btnJumpPrev = document.getElementById('btnJumpPrev');
-const bmCountLabel = document.getElementById('bmCount');
-const modal = document.getElementById('modal');
-const modalInner = document.getElementById('modalInner');
 
-let originalBuffer = null; // ArrayBuffer
-let fileBuffer = null; // Uint8Array
+let originalBuffer = null;
+let fileBuffer = null;
 let segments = [];
 let current = null;
-let undoStack = [];
-let redoStack = [];
-let bookmarks = new Set();
-let showDuplicatesOnly = false;
-let duplicatesMap = new Map();
-let currentRefIndex = -1;
 
 function isPrintable(b){ return b >= 32 && b <= 126; }
 function decodeAscii(bytes){ return new TextDecoder('latin1').decode(bytes); }
-function encodeAsciiStr(s){ const arr=new Uint8Array(s.length); for(let i=0;i<s.length;i++) arr[i]=s.charCodeAt(i)&0xFF; return arr; }
-function encodeUtf16le(s){ const out=new Uint8Array(s.length*2); for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i); out[i*2]=c&0xFF; out[i*2+1]=(c>>8)&0xFF; } return out; }
+function encodeAsciiStr(s){ const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i)&0xFF; return a; }
 
-// --- Helpers: encoding confidence & duplicates ---
-function encodingConfidence(bytes, encoding){
-  // simple heuristic: printable ratio
-  let printable = 0; for(const b of bytes) if(isPrintable(b)) printable++;
-  const ratio = (bytes.length? printable/bytes.length : 0);
-  return Math.round(ratio*100);
-}
-
-function buildDuplicates(){
-  duplicatesMap = new Map();
-  for(const s of segments){ const key = s.text; if(!duplicatesMap.has(key)) duplicatesMap.set(key, []); duplicatesMap.get(key).push(s); }
-  let dupCountNum = 0; for(const [k,v] of duplicatesMap) if(v.length>1) dupCountNum += v.length; dupCount.textContent = `${dupCountNum} duplicates`;
-}
-
-// --- File loading ---
-fileInput.addEventListener('change', ev=>{ const f = ev.target.files && ev.target.files[0]; if(f) loadFile(f); });
+fileInput.addEventListener('change', e=>{ const f=e.target.files[0]; if(f) loadFile(f); });
 
 function loadFile(file){
-  fileInfo.textContent = `Loaded: ${file.name} (${file.size} bytes)`;
+  fileInfo.textContent = `Loaded: ${file.name}`;
   file.arrayBuffer().then(ab=>{
     originalBuffer = ab.slice(0);
     fileBuffer = new Uint8Array(ab.slice(0));
-    fileSizeLabel.textContent = fileBuffer.length.toString();
-    pushUndo();
-    scanBuffer();
-  }).catch(e=>alert('Failed to read file: '+e));
+    scan();
+  });
 }
 
-// --- Scanning: ASCII & UTF-16LE ---
-function scanBuffer(){
+function scan(){
   segments = [];
   if(!fileBuffer) return;
-  const u8 = fileBuffer;
-  const minLen = Math.max(3, parseInt(minLenInput.value||'6',10));
-  let i=0;
+  const u8=fileBuffer; let i=0;
   while(i<u8.length){
     if(isPrintable(u8[i])){
-      const start = i; while(i<u8.length && isPrintable(u8[i])) i++; const len = i-start;
-      if(len>=minLen) segments.push({offset:start,length:len,encoding:'ASCII',text:decodeAscii(u8.slice(start,start+len))});
-      continue;
-    }
-    if(i+1<u8.length && isPrintable(u8[i]) && u8[i+1]===0){
-      const start=i; let chars=0; while(i+1<u8.length && isPrintable(u8[i]) && u8[i+1]===0){ chars++; i+=2; }
-      if(chars>=Math.floor(minLen/2)){
-        const bytes = u8.slice(start, start+chars*2); const txt = new TextDecoder('utf-16le').decode(bytes);
-        segments.push({offset:start,length:bytes.length,encoding:'UTF-16LE',text:txt});
+      const start=i; while(i<u8.length && isPrintable(u8[i])) i++;
+      const len=i-start; if(len>=4){
+        segments.push({offset:start,length:len,text:decodeAscii(u8.slice(start,start+len))});
       }
-      continue;
-    }
-    i++;
+    } else i++;
   }
-  segments.sort((a,b)=>a.offset-b.offset||b.length-b.length);
-  const seen=new Set(); segments = segments.filter(s=>{ if(seen.has(s.offset)) return false; seen.add(s.offset); return true; });
-  buildDuplicates();
-  renderList();
+  render();
 }
 
-function renderList(){
+function render(){
   segList.innerHTML='';
-  const q = segSearch.value.trim().toLowerCase();
-  let shown=0;
+  const q=segSearch.value.toLowerCase();
   for(const s of segments){
-    const txtLower = (s.text||'').toLowerCase();
-    const offHex = '0x'+s.offset.toString(16);
-    if(q && !(txtLower.includes(q) || offHex.includes(q))) continue;
-    if(showDuplicatesOnly){ const arr = duplicatesMap.get(s.text) || []; if(arr.length<2) continue; }
-    const refs = (duplicatesMap.get(s.text) || []).length;
-    const el = document.createElement('div'); el.className='seg'; el.dataset.offset = s.offset;
-    el.innerHTML = `<div class="seg-meta"><div style="font-family:monospace;font-size:12px;color:var(--muted)">${offHex} • ${s.length} • ${s.encoding}</div><div class="tools"><span class="badge">${refs} refs</span><button class="btn alt btnCopySeg" data-offset="${s.offset}">Copy</button><button class="btn alt btnBM" data-offset="${s.offset}">★</button></div></div>
-      <div style="margin-top:6px;white-space:pre-wrap;font-family:monospace">${escapeHtml(s.text.slice(0,300))}</div>`;
-    el.addEventListener('click', (ev)=>{ if(ev.target && (ev.target.classList.contains('btnCopySeg') || ev.target.classList.contains('btnBM'))){ return; } selectSegment(s,el); });
+    if(q && !s.text.toLowerCase().includes(q) && !('0x'+s.offset.toString(16)).includes(q)) continue;
+    const el=document.createElement('div'); el.className='seg';
+    el.textContent=`0x${s.offset.toString(16)} (${s.length})  ${s.text.slice(0,80)}`;
+    el.onclick=()=>select(s,el);
     segList.appendChild(el);
-    // buttons inside
-    el.querySelectorAll('.btnCopySeg').forEach(b=>b.addEventListener('click', ()=>{ navigator.clipboard && navigator.clipboard.writeText('0x'+s.offset.toString(16)); alert('Offset copied: 0x'+s.offset.toString(16)); }));
-    el.querySelectorAll('.btnBM').forEach(b=>b.addEventListener('click', ()=>{ toggleBookmark(s.offset); }));
-    shown++;
   }
-  if(shown===0) segList.innerHTML='<div class="muted">No strings found</div>';
-  updateBMCount();
 }
 
-function escapeHtml(s){ return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-
-function selectSegment(s,el){
+function select(s,el){
   document.querySelectorAll('.seg').forEach(x=>x.classList.remove('sel'));
   el.classList.add('sel');
-  current = Object.assign({}, s);
-  encLabel.textContent = current.encoding;
-  const rawBytes = fileBuffer.slice(current.offset, current.offset+current.length);
-  encConf.textContent = ` ${encodingConfidence(rawBytes,current.encoding)}%`;
-  selInfo.textContent = `0x${current.offset.toString(16)} • ${current.length} bytes`;
-  const refs = (duplicatesMap.get(current.text) || []).length; refBadge.textContent = `${refs} refs`;
-  currentRefIndex = 0; // set index when jumping
-  fullPreview.textContent = current.text;
-  editArea.value = current.text;
+  current=s;
+  selInfo.textContent=`0x${s.offset.toString(16)} • ${s.length}`;
+  editArea.value=s.text;
+  fullPreview.textContent=s.text;
 }
 
-// --- Bookmarks ---
-function toggleBookmark(offset){ if(bookmarks.has(offset)) bookmarks.delete(offset); else bookmarks.add(offset); updateBMCount(); renderList(); }
-function updateBMCount(){ bmCountLabel.textContent = bookmarks.size.toString(); }
+btnApply.onclick=()=>{
+  if(!current) return;
+  const b=encodeAsciiStr(editArea.value);
+  fileBuffer.set(b,current.offset);
+  current.text=decodeAscii(fileBuffer.slice(current.offset,current.offset+current.length));
+  fullPreview.textContent=current.text;
+  render();
+};
 
-// --- Apply edits (in-place preferred) ---
-btnApply.addEventListener('click', ()=>{
-  if(!current || !fileBuffer) return alert('Select a string first');
-  const newText = editArea.value||'';
-  let newBytes;
-  if(current.encoding==='UTF-16LE'){
-    try{ newBytes = new TextEncoder('utf-16le').encode(newText); }catch(e){ newBytes = encodeUtf16le(newText); }
-  } else newBytes = encodeAsciiStr(newText);
-
-  if(newBytes.length <= current.length){ pushUndo(); fileBuffer.set(newBytes, current.offset); if(newBytes.length < current.length) fileBuffer.fill(0, current.offset + newBytes.length, current.offset + current.length); current.text = current.encoding==='UTF-16LE' ? new TextDecoder('utf-16le').decode(fileBuffer.slice(current.offset,current.offset+current.length)) : decodeAscii(fileBuffer.slice(current.offset,current.offset+current.length)); fullPreview.textContent = current.text; fileSizeLabel.textContent = fileBuffer.length.toString(); buildDuplicates(); renderList(); return; }
-
-  if(!allowGrow.checked){ return alert('New text is longer than original. Enable "Allow grow" to permit insertion (advanced).'); }
-  pushUndo(); const delta = newBytes.length - current.length; const newBuf = new Uint8Array(fileBuffer.length + delta); newBuf.set(fileBuffer.slice(0, current.offset), 0); newBuf.set(newBytes, current.offset); newBuf.set(fileBuffer.slice(current.offset + current.length), current.offset + newBytes.length); fileBuffer = newBuf; for(const s of segments) if(s.offset > current.offset) s.offset += delta; current.length = newBytes.length; current.text = newText; fileSizeLabel.textContent = fileBuffer.length.toString(); buildDuplicates(); renderList();
-});
-
-// --- Undo / Redo ---
-function pushUndo(){ if(!fileBuffer) return; undoStack.push(fileBuffer.slice(0)); if(undoStack.length>50) undoStack.shift(); btnUndo.disabled=false; redoStack = []; btnRedo.disabled=true; }
-btnUndo.addEventListener('click', ()=>{ if(undoStack.length===0) return alert('Nothing to undo'); redoStack.push(fileBuffer.slice(0)); fileBuffer = new Uint8Array(undoStack.pop()); segments = []; current = null; fileSizeLabel.textContent = fileBuffer.length.toString(); buildDuplicates(); renderList(); btnRedo.disabled=false; });
-btnRedo.addEventListener('click', ()=>{ if(redoStack.length===0) return alert('Nothing to redo'); undoStack.push(fileBuffer.slice(0)); fileBuffer = new Uint8Array(redoStack.pop()); segments = []; current = null; fileSizeLabel.textContent = fileBuffer.length.toString(); buildDuplicates(); renderList(); btnRedo.disabled=false; });
-
-// Keyboard shortcuts
-window.addEventListener('keydown', (e)=>{
-  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); btnUndo.click(); }
-  if((e.ctrlKey||e.metaKey) && (e.key.toLowerCase()==='y' || (e.shiftKey && e.key.toLowerCase()==='z'))){ e.preventDefault(); btnRedo.click(); }
-});
-
-// --- Replace all occurrences (preview) ---
-btnReplaceAll.addEventListener('click', ()=>{
-  if(!current) return alert('Select a segment first');
-  const target = current.text; const replacement = prompt('Replace all occurrences of (in detected strings only):', '');
-  if(replacement===null) return;
-  const matches = (duplicatesMap.get(target) || []).slice();
-  if(matches.length===0) return alert('No matches found');
-  // build preview
-  let summary = `Will replace ${matches.length} detected occurrences (in-place where length allows):
-
-`;
-  let canReplace = 0; for(const m of matches){ const enc = m.encoding; const newBytes = (enc==='UTF-16LE') ? encodeUtf16le(replacement) : encodeAsciiStr(replacement); if(newBytes.length <= m.length) canReplace++; summary += `0x${m.offset.toString(16)} • ${m.encoding} • ${m.length} → ${newBytes.length}${newBytes.length>m.length ? ' (grow)' : ''}
-`; }
-  summary += `
-Can replace in-place: ${canReplace} / ${matches.length}`;
-  showModal('Replace preview', `<pre style="white-space:pre-wrap">${escapeHtml(summary)}</pre>`, ()=>{
-    if(!confirm('Proceed with in-place replacements where possible?')) return;
-    pushUndo(); let replaced=0; for(const m of matches){ const enc = m.encoding; const newBytes = (enc==='UTF-16LE') ? encodeUtf16le(replacement) : encodeAsciiStr(replacement); if(newBytes.length <= m.length){ fileBuffer.set(newBytes, m.offset); if(newBytes.length < m.length) fileBuffer.fill(0, m.offset+newBytes.length, m.offset+m.length); replaced++; } }
-    alert(`Replaced ${replaced} / ${matches.length} (in-place)`); buildDuplicates(); renderList(); closeModal();
-  });
-});
-
-// --- Modal helpers ---
-function showModal(title, html, onConfirm){ modalInner.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong>${title}</strong><div><button id=modalClose class="btn alt">Close</button></div></div><div style="margin-top:8px">${html}</div><div style="display:flex;justify-content:flex-end;margin-top:8px"><button id=modalOk class="btn">OK</button></div>`; modal.classList.add('show'); document.getElementById('modalClose').addEventListener('click', closeModal); document.getElementById('modalOk').addEventListener('click', ()=>{ onConfirm && onConfirm(); }); }
-function closeModal(){ modal.classList.remove('show'); modalInner.innerHTML=''; }
-
-// --- Export extracted strings ---
-btnExtract.addEventListener('click', ()=>{
-  if(!fileBuffer) return alert('No file loaded');
-  const out = segments.map(s=>`0x${s.offset.toString(16)} (${s.length}) [${s.encoding}]
-${s.text}`).join('
-
-');
-  const blob = new Blob([out],{type:'text/plain'});
-  const url = URL.createObjectURL(blob);
+btnDownload.onclick=()=>{
+  if(!fileBuffer) return;
+  const blob=new Blob([fileBuffer]);
   const a=document.createElement('a');
-  a.href=url; a.download='extracted-strings.txt';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-}); const out = segments.map(s=>`0x${s.offset.toString(16)} (${s.length}) [${s.encoding}]
-${s.text}`).join('
+  a.href=URL.createObjectURL(blob);
+  a.download='global-metadata.dat';
+  a.click();
+};
 
-'); const blob = new Blob([out],{type:'text/plain'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='extracted-strings.txt'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); });
+btnRevert.onclick=()=>{
+  if(!originalBuffer) return;
+  fileBuffer=new Uint8Array(originalBuffer.slice(0));
+  scan();
+};
 
-// --- Download & Revert ---
-btnDownload.addEventListener('click', ()=>{ if(!fileBuffer) return alert('No file loaded'); const blob = new Blob([fileBuffer],{type:'application/octet-stream'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='global-metadata.dat'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); });
-btnRevert.addEventListener('click', ()=>{ if(!originalBuffer) return; if(!confirm('Revert to original file buffer?')) return; fileBuffer = new Uint8Array(originalBuffer.slice(0)); undoStack = []; redoStack = []; segments = []; current = null; fileSizeLabel.textContent = fileBuffer.length.toString(); buildDuplicates(); renderList(); });
-
-// --- Copy offset / Jump between refs ---
-btnCopyOffset.addEventListener('click', ()=>{ if(!current) return; navigator.clipboard && navigator.clipboard.writeText('0x'+current.offset.toString(16)); alert('Offset copied: 0x'+current.offset.toString(16)); });
-btnJumpNext.addEventListener('click', ()=>{ if(!current) return; const arr = duplicatesMap.get(current.text)||[]; if(arr.length<=1) return alert('No other references'); currentRefIndex = (currentRefIndex+1)%arr.length; jumpToOffset(arr[currentRefIndex].offset); });
-btnJumpPrev.addEventListener('click', ()=>{ if(!current) return; const arr = duplicatesMap.get(current.text)||[]; if(arr.length<=1) return alert('No other references'); currentRefIndex = (currentRefIndex-1+arr.length)%arr.length; jumpToOffset(arr[currentRefIndex].offset); });
-function jumpToOffset(off){ const el = Array.from(segList.querySelectorAll('.seg')).find(x=>parseInt(x.dataset.offset,10)===off); if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); el.click(); } else alert('Reference not in current list view (use search/clear filters).'); }
-
-// --- Toggle duplicates view ---
-btnToggleDuplicates.addEventListener('click', ()=>{ showDuplicatesOnly = !showDuplicatesOnly; btnToggleDuplicates.textContent = showDuplicatesOnly ? 'Showing duplicates' : 'Toggle duplicates'; renderList(); });
-
-// --- Replace all (old behavior kept as quick prompt) ---
-btnReplaceAll.addEventListener('dblclick', ()=>{ alert('Tip: double-clicked replace-all. Use single-click for preview + confirm.'); });
-
-// --- Search & controls ---
-segSearch.addEventListener('input', ()=>renderList()); btnClearSearch.addEventListener('click', ()=>{ segSearch.value=''; renderList(); }); btnRescan.addEventListener('click', ()=>scanBuffer());
-
-// initial state
-fileSizeLabel.textContent = '0'; btnUndo.disabled=true; btnRedo.disabled=true;
+btnRescan.onclick=scan;
+segSearch.oninput=render;
 </script>
 </body>
 </html>
-
