@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>GorillaTag Metadata Helper — Slim + QoL</title>
+<title>GorillaTag Metadata Helper — Slim + Fetch</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#071027;--panel:#091322;--muted:#9aa6bf;--accent:#34d399}
@@ -26,6 +26,7 @@
   .search{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
   .small{font-size:13px;color:var(--muted)}
   .preview{white-space:pre-wrap;background:rgba(255,255,255,0.01);padding:8px;border-radius:8px;margin-top:8px;font-family:monospace;max-height:220px;overflow:auto}
+  .diag{font-family:monospace;color:var(--muted);font-size:13px;margin-top:8px}
   @media (max-width:900px){ .grid{grid-template-columns:1fr} .list{height:260px} }
 </style>
 </head>
@@ -34,7 +35,7 @@
 <header>
   <div>
     <h1>GorillaTag Metadata Helper</h1>
-    <div class="muted">Lightweight editor for GorillaTag-style metadata strings</div>
+    <div class="muted">Lightweight editor for GorillaTag-style metadata strings — now can fetch a remote metadata file (CORS permitting).</div>
   </div>
 </header>
 
@@ -43,9 +44,22 @@
     <div class="row" style="margin-bottom:8px">
       <label class="btn alt">📁 Load<input id="fileInput" type="file" hidden></label>
       <button id="btnRescan" class="btn alt">Rescan</button>
-      <div id="fileInfo" class="small" style="margin-left:auto">No file</div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <button id="btnFetchMeta" class="btn">Fetch latest from URL</button>
+      </div>
     </div>
-    <input id="segSearch" class="search" placeholder="search text or 0xoffset" />
+
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input id="fetchUrl" class="search" placeholder="Enter URL to metadata (raw/global-metadata.dat) — e.g. https://example.com/global-metadata.dat" />
+      <button id="btnFetchGo" class="btn alt">Fetch</button>
+    </div>
+
+    <div id="fileInfo" class="small">No file</div>
+    <div id="diag" class="diag">Status: idle</div>
+
+    <div style="margin-top:10px">
+      <input id="segSearch" class="search" placeholder="search text or 0xoffset" />
+    </div>
     <div id="segList" class="list"></div>
   </div>
 
@@ -75,6 +89,10 @@ const btnApply = document.getElementById('btnApply');
 const btnDownload = document.getElementById('btnDownload');
 const btnRevert = document.getElementById('btnRevert');
 const btnRescan = document.getElementById('btnRescan');
+const diag = document.getElementById('diag');
+const fetchUrl = document.getElementById('fetchUrl');
+const btnFetchGo = document.getElementById('btnFetchGo');
+const btnFetchMeta = document.getElementById('btnFetchMeta');
 
 let originalBuffer = null;
 let fileBuffer = null;
@@ -85,35 +103,66 @@ function isPrintable(b){ return b >= 32 && b <= 126; }
 function decodeAscii(bytes){ return new TextDecoder('latin1').decode(bytes); }
 function encodeAsciiStr(s){ const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i)&0xFF; return a; }
 
+// File input
 fileInput.addEventListener('change', e=>{ const f=e.target.files[0]; if(f) loadFile(f); });
 
 function loadFile(file){
-  fileInfo.textContent = `Loaded: ${file.name}`;
+  fileInfo.textContent = `Loaded: ${file.name} (${file.size} bytes)`;
+  diag.textContent = 'Status: reading file...';
   file.arrayBuffer().then(ab=>{
     originalBuffer = ab.slice(0);
     fileBuffer = new Uint8Array(ab.slice(0));
+    diag.textContent = 'Status: file loaded. Scanning...';
     scan();
-  });
+  }).catch(err=>{ diag.textContent = 'Error reading file: '+err; });
 }
+
+// Fetching remote metadata (user-provided URL). Note: CORS may block some hosts.
+async function fetchMetadataFromUrl(url){
+  if(!url) return alert('Please provide a URL to fetch');
+  diag.textContent = 'Status: fetching from URL...';
+  try{
+    const res = await fetch(url, { cache: 'no-store' });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const ab = await res.arrayBuffer();
+    originalBuffer = ab.slice(0);
+    fileBuffer = new Uint8Array(ab.slice(0));
+    fileInfo.textContent = `Fetched: ${url} (${fileBuffer.length} bytes)`;
+    diag.textContent = 'Status: fetched file. Scanning...';
+    scan();
+  }catch(err){
+    diag.textContent = 'Fetch failed: '+err.message;
+    // helpful hint for user
+    if(err.name === 'TypeError') diag.textContent += ' — possible CORS or network error.';
+  }
+}
+
+// button handlers
+btnFetchGo.addEventListener('click', ()=>fetchMetadataFromUrl(fetchUrl.value.trim()));
+btnFetchMeta.addEventListener('click', ()=>{
+  // quick default list of common places users host global-metadata.dat
+  const example = prompt('Enter metadata URL (or paste):', fetchUrl.value.trim() || 'https://raw.githubusercontent.com/user/repo/main/global-metadata.dat');
+  if(example) { fetchUrl.value = example; fetchMetadataFromUrl(example); }
+});
 
 function scan(){
   segments = [];
-  if(!fileBuffer) return;
+  if(!fileBuffer){ diag.textContent = 'No file buffer'; return; }
   const u8=fileBuffer; let i=0;
+  const minLen = 4;
   while(i<u8.length){
     if(isPrintable(u8[i])){
       const start=i; while(i<u8.length && isPrintable(u8[i])) i++;
-      const len=i-start; if(len>=4){
-        segments.push({offset:start,length:len,text:decodeAscii(u8.slice(start,start+len))});
-      }
+      const len=i-start; if(len>=minLen) segments.push({offset:start,length:len,text:decodeAscii(u8.slice(start,start+len))});
     } else i++;
   }
+  diag.textContent = `Scan complete — found ${segments.length} strings.`;
   render();
 }
 
 function render(){
   segList.innerHTML='';
-  const q=segSearch.value.toLowerCase();
+  const q=segSearch.value.trim().toLowerCase();
   for(const s of segments){
     if(q && !s.text.toLowerCase().includes(q) && !('0x'+s.offset.toString(16)).includes(q)) continue;
     const el=document.createElement('div'); el.className='seg';
@@ -135,24 +184,25 @@ function select(s,el){
 btnApply.onclick=()=>{
   if(!current) return;
   const b=encodeAsciiStr(editArea.value);
+  // if new text longer than original, ask to confirm and pad/truncate to avoid accidental breaks
+  if(b.length>current.length && !confirm('New text is longer than original. Proceed and overwrite (this will extend and may corrupt offsets)?')) return;
   fileBuffer.set(b,current.offset);
-  current.text=decodeAscii(fileBuffer.slice(current.offset,current.offset+current.length));
+  current.text=decodeAscii(fileBuffer.slice(current.offset,current.offset+Math.min(current.length,b.length)));
   fullPreview.textContent=current.text;
   render();
 };
 
 btnDownload.onclick=()=>{
-  if(!fileBuffer) return;
-  const blob=new Blob([fileBuffer]);
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='global-metadata.dat';
-  a.click();
+  if(!fileBuffer) return alert('No file loaded');
+  const blob=new Blob([fileBuffer],{type:'application/octet-stream'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='global-metadata.dat'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 };
 
 btnRevert.onclick=()=>{
   if(!originalBuffer) return;
-  fileBuffer=new Uint8Array(originalBuffer.slice(0));
+  if(!confirm('Revert to original buffer?')) return;
+  fileBuffer = new Uint8Array(originalBuffer.slice(0));
   scan();
 };
 
