@@ -3,211 +3,565 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>GorillaTag Metadata Helper — Slim + Fetch</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<title>GorillaTag Metadata Helper</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#071027;--panel:#091322;--muted:#9aa6bf;--accent:#34d399}
-  *{box-sizing:border-box}
-  body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#031021,#051026);color:#e6eef8}
-  .wrap{max-width:980px;margin:18px auto;padding:16px;border-radius:10px;background:rgba(255,255,255,0.02)}
-  header{display:flex;align-items:center;gap:12px}
-  h1{margin:0;font-size:18px}
-  .muted{color:var(--muted);font-size:13px}
-  .grid{display:grid;grid-template-columns:320px 1fr;gap:12px;margin-top:12px}
-  .panel{background:var(--panel);padding:12px;border-radius:10px}
-  .list{height:420px;overflow:auto;border-radius:8px;border:1px solid rgba(255,255,255,0.03);padding:8px;background:rgba(255,255,255,0.01)}
-  .seg{padding:8px;border-radius:6px;margin-bottom:6px;cursor:pointer}
-  .seg.sel{outline:2px solid rgba(52,211,153,0.12);background:linear-gradient(90deg, rgba(52,211,153,0.03), rgba(96,165,250,0.01))}
-  textarea,input,button{font:inherit}
-  textarea{width:100%;height:180px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit;padding:8px;font-family:monospace}
-  .btn{padding:8px 12px;border-radius:8px;border:none;background:linear-gradient(180deg,var(--accent),#60a5fa);color:#042233;font-weight:600;cursor:pointer}
-  .btn.alt{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
-  .row{display:flex;gap:8px;align-items:center}
-  .search{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
-  .small{font-size:13px;color:var(--muted)}
-  .preview{white-space:pre-wrap;background:rgba(255,255,255,0.01);padding:8px;border-radius:8px;margin-top:8px;font-family:monospace;max-height:220px;overflow:auto}
-  .diag{font-family:monospace;color:var(--muted);font-size:13px;margin-top:8px}
-  @media (max-width:900px){ .grid{grid-template-columns:1fr} .list{height:260px} }
+  :root{
+    --bg:#060c18;
+    --panel:#0a1120;
+    --panel2:#0d1528;
+    --border:rgba(52,211,153,0.08);
+    --muted:#5a7090;
+    --text:#c8daf0;
+    --accent:#34d399;
+    --accent2:#60a5fa;
+    --danger:#f87171;
+    --warn:#fbbf24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Syne',system-ui,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(52,211,153,0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(96,165,250,0.04) 0%, transparent 60%);
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:20px 16px}
+  header{
+    display:flex;align-items:center;gap:16px;
+    border-bottom:1px solid var(--border);
+    padding-bottom:16px;margin-bottom:20px;
+  }
+  .logo{
+    width:38px;height:38px;border-radius:10px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;flex-shrink:0;
+  }
+  h1{font-size:17px;font-weight:700;letter-spacing:0.02em;color:#e8f4ff}
+  .subtitle{font-size:12px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace}
+
+  .grid{display:grid;grid-template-columns:340px 1fr;gap:14px}
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:14px;
+  }
+
+  /* URL bar */
+  .url-row{display:flex;gap:6px;margin-bottom:10px}
+  .url-input{
+    flex:1;padding:7px 10px;border-radius:8px;
+    border:1px solid var(--border);
+    background:rgba(255,255,255,0.02);
+    color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;
+    outline:none;transition:border-color 0.2s;
+  }
+  .url-input:focus{border-color:rgba(52,211,153,0.3)}
+  .url-input::placeholder{color:var(--muted)}
+
+  /* Buttons */
+  .btn{
+    padding:7px 12px;border-radius:8px;border:none;
+    font:600 12px 'Syne',system-ui;cursor:pointer;
+    transition:opacity 0.15s,transform 0.1s;white-space:nowrap;
+  }
+  .btn:hover{opacity:0.85}
+  .btn:active{transform:scale(0.97)}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#031a10}
+  .btn-ghost{background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--muted)}
+  .btn-ghost:hover{color:var(--text);border-color:rgba(255,255,255,0.1)}
+  .btn-danger{background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.2);color:var(--danger)}
+
+  .toolbar{display:flex;gap:6px;align-items:center;margin-bottom:10px}
+  .toolbar .btn{font-size:11px}
+
+  /* Status */
+  #statusBar{
+    padding:6px 10px;border-radius:7px;
+    background:rgba(255,255,255,0.02);border:1px solid var(--border);
+    font-family:'JetBrains Mono',monospace;font-size:11px;
+    color:var(--muted);margin-bottom:10px;
+    min-height:30px;display:flex;align-items:center;gap:6px;
+  }
+  .status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
+  .status-dot.ok{background:var(--accent)}
+  .status-dot.err{background:var(--danger)}
+  .status-dot.busy{background:var(--warn);animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+  /* Search */
+  .search-box{
+    width:100%;padding:7px 10px;border-radius:8px;
+    border:1px solid var(--border);
+    background:rgba(255,255,255,0.02);
+    color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace;
+    outline:none;margin-bottom:8px;transition:border-color 0.2s;
+  }
+  .search-box:focus{border-color:rgba(52,211,153,0.3)}
+  .search-box::placeholder{color:var(--muted)}
+
+  /* String list */
+  .seg-list{
+    height:380px;overflow-y:auto;
+    border-radius:8px;border:1px solid var(--border);
+    background:rgba(255,255,255,0.01);
+    padding:4px;
+  }
+  .seg-list::-webkit-scrollbar{width:4px}
+  .seg-list::-webkit-scrollbar-track{background:transparent}
+  .seg-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
+
+  .seg-item{
+    padding:6px 8px;border-radius:6px;cursor:pointer;
+    transition:background 0.1s;
+    margin-bottom:2px;
+  }
+  .seg-item:hover{background:rgba(255,255,255,0.04)}
+  .seg-item.sel{
+    background:rgba(52,211,153,0.07);
+    border:1px solid rgba(52,211,153,0.15);
+  }
+  .seg-item.modified{border-left:2px solid var(--warn) !important}
+  .seg-offset{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);margin-bottom:2px}
+  .seg-text{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+
+  /* Right panel */
+  .right-panel{display:flex;flex-direction:column;gap:12px}
+  .section-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px}
+  .sel-meta{
+    font-family:'JetBrains Mono',monospace;font-size:12px;
+    color:var(--accent2);padding:6px 8px;
+    background:rgba(96,165,250,0.05);border-radius:6px;
+    border:1px solid rgba(96,165,250,0.1);
+    min-height:28px;
+  }
+
+  /* Edit textarea */
+  #editArea{
+    width:100%;height:120px;
+    border-radius:8px;border:1px solid var(--border);
+    background:rgba(255,255,255,0.02);
+    color:var(--text);padding:10px;
+    font-family:'JetBrains Mono',monospace;font-size:12px;
+    resize:vertical;outline:none;
+    transition:border-color 0.2s;
+    line-height:1.5;
+  }
+  #editArea:focus{border-color:rgba(52,211,153,0.3)}
+  #editArea:disabled{opacity:0.4;cursor:not-allowed}
+
+  /* Length meter */
+  .len-meter{
+    display:flex;align-items:center;gap:8px;
+    font-family:'JetBrains Mono',monospace;font-size:11px;
+    margin-top:4px;
+  }
+  .len-bar-bg{flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+  .len-bar{height:100%;border-radius:2px;transition:width 0.2s,background 0.2s;background:var(--accent)}
+  .len-text{color:var(--muted);white-space:nowrap}
+  .len-warn{color:var(--warn)}
+  .len-over{color:var(--danger)}
+
+  /* Action buttons */
+  .action-row{display:flex;gap:8px;flex-wrap:wrap}
+
+  /* Warning box */
+  .warning-box{
+    padding:8px 10px;border-radius:7px;
+    background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);
+    font-size:11px;color:var(--warn);line-height:1.5;
+    display:none;
+  }
+  .warning-box.show{display:block}
+
+  /* Preview */
+  #fullPreview{
+    background:rgba(255,255,255,0.01);
+    border:1px solid var(--border);
+    border-radius:8px;padding:10px;
+    font-family:'JetBrains Mono',monospace;font-size:11px;
+    color:var(--muted);max-height:140px;overflow:auto;
+    white-space:pre-wrap;word-break:break-all;
+    line-height:1.6;
+  }
+  #fullPreview::-webkit-scrollbar{width:4px}
+  #fullPreview::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
+
+  /* Stats bar */
+  .stats-bar{
+    display:flex;gap:16px;flex-wrap:wrap;
+    padding:8px 12px;border-radius:8px;
+    background:rgba(255,255,255,0.01);border:1px solid var(--border);
+    font-family:'JetBrains Mono',monospace;font-size:11px;
+  }
+  .stat{display:flex;gap:6px;align-items:center}
+  .stat-label{color:var(--muted)}
+  .stat-val{color:var(--accent2)}
+
+  @media(max-width:860px){
+    .grid{grid-template-columns:1fr}
+    .seg-list{height:240px}
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-<header>
-  <div>
-    <h1>GorillaTag Metadata Helper</h1>
-    <div class="muted">Lightweight editor for GorillaTag-style metadata strings — now can fetch a remote metadata file (CORS permitting).</div>
-  </div>
-</header>
+  <header>
+    <div class="logo">🦍</div>
+    <div>
+      <h1>GorillaTag Metadata Helper</h1>
+      <div class="subtitle">global-metadata.dat string editor — safe in-place editing</div>
+    </div>
+  </header>
 
-<div class="grid">
-  <div class="panel">
-    <div class="row" style="margin-bottom:8px">
-      <label class="btn alt">📁 Load<input id="fileInput" type="file" hidden></label>
-      <button id="btnRescan" class="btn alt">Rescan</button>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <button id="btnFetchMeta" class="btn">Fetch latest from URL</button>
+  <div class="grid">
+    <!-- LEFT: file + list -->
+    <div class="panel">
+      <div class="url-row">
+        <input id="fetchUrl" class="url-input" placeholder="https://example.com/global-metadata.dat" />
+      </div>
+      <div class="toolbar">
+        <label class="btn btn-ghost" style="cursor:pointer">📁 Load File<input id="fileInput" type="file" hidden></label>
+        <button id="btnFetchGo" class="btn btn-primary">⬇ Fetch URL</button>
+        <button id="btnRescan" class="btn btn-ghost" style="margin-left:auto">↺ Rescan</button>
+      </div>
+
+      <div id="statusBar">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Idle — load a file or fetch from URL</span>
+      </div>
+
+      <input id="segSearch" class="search-box" placeholder="Search text or 0xoffset…" />
+      <div id="segList" class="seg-list"></div>
+
+      <div class="stats-bar" style="margin-top:10px">
+        <div class="stat"><span class="stat-label">Strings:</span><span class="stat-val" id="statCount">0</span></div>
+        <div class="stat"><span class="stat-label">Modified:</span><span class="stat-val" id="statMod">0</span></div>
+        <div class="stat"><span class="stat-label">File:</span><span class="stat-val" id="statSize">—</span></div>
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-      <input id="fetchUrl" class="search" placeholder="Enter URL to metadata (raw/global-metadata.dat) — e.g. https://example.com/global-metadata.dat" />
-      <button id="btnFetchGo" class="btn alt">Fetch</button>
-    </div>
+    <!-- RIGHT: editor -->
+    <div class="panel right-panel">
+      <div>
+        <div class="section-label">Selected String</div>
+        <div id="selMeta" class="sel-meta">Nothing selected — pick a string from the list</div>
+      </div>
 
-    <div id="fileInfo" class="small">No file</div>
-    <div id="diag" class="diag">Status: idle</div>
+      <div>
+        <div class="section-label">Edit Value</div>
+        <textarea id="editArea" disabled placeholder="Select a string to edit…"></textarea>
+        <div class="len-meter">
+          <div class="len-bar-bg"><div class="len-bar" id="lenBar" style="width:0%"></div></div>
+          <div class="len-text" id="lenText">0 / 0</div>
+        </div>
+        <div class="warning-box" id="warnBox"></div>
+      </div>
 
-    <div style="margin-top:10px">
-      <input id="segSearch" class="search" placeholder="search text or 0xoffset" />
+      <div class="action-row">
+        <button id="btnApply" class="btn btn-primary" disabled>✓ Apply (in-place)</button>
+        <button id="btnRevert" class="btn btn-ghost" disabled>↺ Revert this string</button>
+        <button id="btnDownload" class="btn btn-ghost" disabled>⬇ Download .dat</button>
+        <button id="btnRevertAll" class="btn btn-danger" disabled>✕ Revert All</button>
+      </div>
+
+      <div>
+        <div class="section-label">Preview</div>
+        <div id="fullPreview">—</div>
+      </div>
     </div>
-    <div id="segList" class="list"></div>
   </div>
-
-  <div class="panel">
-    <div class="small">Selected:</div>
-    <div id="selInfo" style="font-family:monospace">(none)</div>
-    <textarea id="editArea" placeholder="Select a string to edit"></textarea>
-    <div class="row" style="margin-top:8px">
-      <button id="btnApply" class="btn">Apply</button>
-      <button id="btnDownload" class="btn">Download</button>
-      <button id="btnRevert" class="btn alt">Revert</button>
-    </div>
-    <div id="fullPreview" class="preview">—</div>
-  </div>
-</div>
 </div>
 
 <script>
-const fileInput = document.getElementById('fileInput');
-const fileInfo = document.getElementById('fileInfo');
-const segList = document.getElementById('segList');
-const segSearch = document.getElementById('segSearch');
-const editArea = document.getElementById('editArea');
-const selInfo = document.getElementById('selInfo');
-const fullPreview = document.getElementById('fullPreview');
-const btnApply = document.getElementById('btnApply');
+// ── DOM refs ──────────────────────────────────────────────────────────
+const fileInput   = document.getElementById('fileInput');
+const fetchUrl    = document.getElementById('fetchUrl');
+const btnFetchGo  = document.getElementById('btnFetchGo');
+const btnRescan   = document.getElementById('btnRescan');
+const segSearch   = document.getElementById('segSearch');
+const segList     = document.getElementById('segList');
+const selMeta     = document.getElementById('selMeta');
+const editArea    = document.getElementById('editArea');
+const lenBar      = document.getElementById('lenBar');
+const lenText     = document.getElementById('lenText');
+const warnBox     = document.getElementById('warnBox');
+const btnApply    = document.getElementById('btnApply');
+const btnRevert   = document.getElementById('btnRevert');
 const btnDownload = document.getElementById('btnDownload');
-const btnRevert = document.getElementById('btnRevert');
-const btnRescan = document.getElementById('btnRescan');
-const diag = document.getElementById('diag');
-const fetchUrl = document.getElementById('fetchUrl');
-const btnFetchGo = document.getElementById('btnFetchGo');
-const btnFetchMeta = document.getElementById('btnFetchMeta');
+const btnRevertAll= document.getElementById('btnRevertAll');
+const fullPreview = document.getElementById('fullPreview');
+const statusDot   = document.getElementById('statusDot');
+const statusText  = document.getElementById('statusText');
+const statCount   = document.getElementById('statCount');
+const statMod     = document.getElementById('statMod');
+const statSize    = document.getElementById('statSize');
 
-let originalBuffer = null;
-let fileBuffer = null;
-let segments = [];
-let current = null;
+// ── State ─────────────────────────────────────────────────────────────
+let originalBuffer = null;   // Uint8Array — never mutated after load
+let fileBuffer     = null;   // Uint8Array — working copy, in-place edits only
+let segments       = [];     // [{offset, length, origText, text}]
+let current        = null;   // selected segment object
+let modifiedOffsets= new Set();
 
+// ── Status helpers ────────────────────────────────────────────────────
+function setStatus(msg, state='idle'){
+  statusText.textContent = msg;
+  statusDot.className = 'status-dot' + (state==='ok'?' ok':state==='err'?' err':state==='busy'?' busy':'');
+}
+
+// ── Codec helpers ─────────────────────────────────────────────────────
+// We use latin-1 (byte-for-byte) so we never corrupt binary data.
 function isPrintable(b){ return b >= 32 && b <= 126; }
-function decodeAscii(bytes){ return new TextDecoder('latin1').decode(bytes); }
-function encodeAsciiStr(s){ const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i)&0xFF; return a; }
 
-// File input
-fileInput.addEventListener('change', e=>{ const f=e.target.files[0]; if(f) loadFile(f); });
-
-function loadFile(file){
-  fileInfo.textContent = `Loaded: ${file.name} (${file.size} bytes)`;
-  diag.textContent = 'Status: reading file...';
-  file.arrayBuffer().then(ab=>{
-    originalBuffer = ab.slice(0);
-    fileBuffer = new Uint8Array(ab.slice(0));
-    diag.textContent = 'Status: file loaded. Scanning...';
-    scan();
-  }).catch(err=>{ diag.textContent = 'Error reading file: '+err; });
+function readString(buf, offset, length){
+  // Read exactly `length` bytes from offset as latin-1
+  return new TextDecoder('latin1').decode(buf.subarray(offset, offset+length));
 }
 
-// Fetching remote metadata (user-provided URL). Note: CORS may block some hosts.
-async function fetchMetadataFromUrl(url){
-  if(!url) return alert('Please provide a URL to fetch');
-  diag.textContent = 'Status: fetching from URL...';
-  try{
-    const res = await fetch(url, { cache: 'no-store' });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const ab = await res.arrayBuffer();
-    originalBuffer = ab.slice(0);
-    fileBuffer = new Uint8Array(ab.slice(0));
-    fileInfo.textContent = `Fetched: ${url} (${fileBuffer.length} bytes)`;
-    diag.textContent = 'Status: fetched file. Scanning...';
-    scan();
-  }catch(err){
-    diag.textContent = 'Fetch failed: '+err.message;
-    // helpful hint for user
-    if(err.name === 'TypeError') diag.textContent += ' — possible CORS or network error.';
-  }
+function writeStringInPlace(buf, offset, maxLen, newStr){
+  /**
+   * KEY SAFETY RULE:
+   * We ONLY ever write within [offset, offset+maxLen).
+   * If newStr is shorter  → write newStr bytes, then fill remainder with 0x00
+   *                         (null bytes — safe padding that won't show as printable)
+   * If newStr is longer   → truncate to maxLen (caller already warned user)
+   * This ensures we never move any bytes or change file size.
+   */
+  const bytes = new TextEncoder().encode(newStr); // UTF-8; for ASCII same as latin-1
+  const writeLen = Math.min(bytes.length, maxLen);
+  for(let i=0; i<writeLen; i++) buf[offset+i] = bytes[i];
+  // Zero-pad the remainder so old chars don't bleed through
+  for(let i=writeLen; i<maxLen; i++) buf[offset+i] = 0x00;
 }
 
-// button handlers
-btnFetchGo.addEventListener('click', ()=>fetchMetadataFromUrl(fetchUrl.value.trim()));
-btnFetchMeta.addEventListener('click', ()=>{
-  // quick default list of common places users host global-metadata.dat
-  const example = prompt('Enter metadata URL (or paste):', fetchUrl.value.trim() || 'https://raw.githubusercontent.com/user/repo/main/global-metadata.dat');
-  if(example) { fetchUrl.value = example; fetchMetadataFromUrl(example); }
-});
-
+// ── Scan ──────────────────────────────────────────────────────────────
 function scan(){
+  if(!fileBuffer){ setStatus('No file loaded.','err'); return; }
   segments = [];
-  if(!fileBuffer){ diag.textContent = 'No file buffer'; return; }
-  const u8=fileBuffer; let i=0;
+  modifiedOffsets.clear();
+  const u8 = fileBuffer;
   const minLen = 4;
-  while(i<u8.length){
+  let i = 0;
+  while(i < u8.length){
     if(isPrintable(u8[i])){
-      const start=i; while(i<u8.length && isPrintable(u8[i])) i++;
-      const len=i-start; if(len>=minLen) segments.push({offset:start,length:len,text:decodeAscii(u8.slice(start,start+len))});
-    } else i++;
+      const start = i;
+      while(i < u8.length && isPrintable(u8[i])) i++;
+      const length = i - start;
+      if(length >= minLen){
+        const text = readString(u8, start, length);
+        segments.push({ offset:start, length, origText:text, text });
+      }
+    } else {
+      i++;
+    }
   }
-  diag.textContent = `Scan complete — found ${segments.length} strings.`;
+  setStatus(`Scan complete — ${segments.length} strings found.`, 'ok');
+  updateStats();
   render();
+  // deselect
+  current = null;
+  selMeta.textContent = 'Nothing selected — pick a string from the list';
+  editArea.value = '';
+  editArea.disabled = true;
+  fullPreview.textContent = '—';
+  btnApply.disabled = true;
+  btnRevert.disabled = true;
+  updateLengthMeter(0,0);
 }
 
+// ── Render list ───────────────────────────────────────────────────────
 function render(){
-  segList.innerHTML='';
-  const q=segSearch.value.trim().toLowerCase();
+  segList.innerHTML = '';
+  const q = segSearch.value.trim().toLowerCase();
+  let shown = 0;
   for(const s of segments){
-    if(q && !s.text.toLowerCase().includes(q) && !('0x'+s.offset.toString(16)).includes(q)) continue;
-    const el=document.createElement('div'); el.className='seg';
-    el.textContent=`0x${s.offset.toString(16)} (${s.length})  ${s.text.slice(0,80)}`;
-    el.onclick=()=>select(s,el);
+    const hexOff = '0x'+s.offset.toString(16);
+    if(q && !s.text.toLowerCase().includes(q) && !hexOff.includes(q)) continue;
+    shown++;
+    const el = document.createElement('div');
+    el.className = 'seg-item' + (current===s?' sel':'') + (modifiedOffsets.has(s.offset)?' modified':'');
+    el.innerHTML =
+      `<div class="seg-offset">${hexOff} <span style="color:var(--muted)">len:${s.length}</span>`+
+      (modifiedOffsets.has(s.offset)?` <span style="color:var(--warn)">✎ modified</span>`:'')+
+      `</div><div class="seg-text">${escHtml(s.text)}</div>`;
+    el.onclick = () => selectSegment(s, el);
     segList.appendChild(el);
   }
+  if(shown === 0){
+    segList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">No strings match</div>';
+  }
 }
 
-function select(s,el){
-  document.querySelectorAll('.seg').forEach(x=>x.classList.remove('sel'));
-  el.classList.add('sel');
-  current=s;
-  selInfo.textContent=`0x${s.offset.toString(16)} • ${s.length}`;
-  editArea.value=s.text;
-  fullPreview.textContent=s.text;
+function escHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-btnApply.onclick=()=>{
+// ── Select ────────────────────────────────────────────────────────────
+function selectSegment(s){
+  current = s;
+  render(); // re-render to update .sel class
+  selMeta.textContent = `Offset: 0x${s.offset.toString(16)} (${s.offset})  •  Max length: ${s.length} bytes`;
+  editArea.value = s.text;
+  editArea.disabled = false;
+  btnApply.disabled = false;
+  btnRevert.disabled = !modifiedOffsets.has(s.offset);
+  fullPreview.textContent = s.text;
+  updateLengthMeter(s.text.length, s.length);
+}
+
+// ── Length meter ──────────────────────────────────────────────────────
+function updateLengthMeter(cur, max){
+  if(max === 0){ lenText.textContent='0 / 0'; lenBar.style.width='0%'; return; }
+  const pct = Math.min(100, (cur/max)*100);
+  lenBar.style.width = pct+'%';
+  lenBar.style.background = cur>max ? 'var(--danger)' : cur/max>0.9 ? 'var(--warn)' : 'var(--accent)';
+  lenText.textContent = `${cur} / ${max}`;
+  lenText.className = 'len-text'+(cur>max?' len-over':cur/max>0.9?' len-warn':'');
+}
+
+editArea.addEventListener('input', ()=>{
   if(!current) return;
-  const b=encodeAsciiStr(editArea.value);
-  // if new text longer than original, ask to confirm and pad/truncate to avoid accidental breaks
-  if(b.length>current.length && !confirm('New text is longer than original. Proceed and overwrite (this will extend and may corrupt offsets)?')) return;
-  fileBuffer.set(b,current.offset);
-  current.text=decodeAscii(fileBuffer.slice(current.offset,current.offset+Math.min(current.length,b.length)));
-  fullPreview.textContent=current.text;
+  const newLen = editArea.value.length;
+  updateLengthMeter(newLen, current.length);
+  const diff = newLen - current.length;
+  if(diff > 0){
+    warnBox.className = 'warning-box show';
+    warnBox.textContent = `⚠ New text is ${diff} byte(s) too long. It will be truncated to fit the original slot (${current.length} bytes). This prevents file corruption.`;
+  } else if(diff < 0){
+    warnBox.className = 'warning-box show';
+    warnBox.style.background = 'rgba(52,211,153,0.04)';
+    warnBox.style.borderColor = 'rgba(52,211,153,0.2)';
+    warnBox.style.color = 'var(--accent)';
+    warnBox.textContent = `ℹ ${-diff} byte(s) shorter — remaining space will be zero-padded (safe).`;
+  } else {
+    warnBox.className = 'warning-box';
+    warnBox.style = '';
+  }
+});
+
+// ── Apply edit (safe in-place) ────────────────────────────────────────
+btnApply.addEventListener('click', ()=>{
+  if(!current || !fileBuffer) return;
+  const newText = editArea.value;
+  // Truncate to max length SILENTLY (we already warned the user via the meter)
+  const safeText = newText.slice(0, current.length);
+  // Write in-place — fills remainder with 0x00
+  writeStringInPlace(fileBuffer, current.offset, current.length, safeText);
+  // Update segment's live text by re-reading from buffer
+  current.text = readString(fileBuffer, current.offset, current.length).replace(/\x00+$/, '');
+  // Update the displayed value to show the (possibly truncated) result
+  editArea.value = current.text;
+  // Track modification
+  modifiedOffsets.add(current.offset);
+  fullPreview.textContent = current.text;
+  updateLengthMeter(current.text.length, current.length);
+  btnRevert.disabled = false;
+  updateStats();
   render();
-};
+  setStatus(`Applied edit at 0x${current.offset.toString(16)}.`, 'ok');
+});
 
-btnDownload.onclick=()=>{
-  if(!fileBuffer) return alert('No file loaded');
-  const blob=new Blob([fileBuffer],{type:'application/octet-stream'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='global-metadata.dat'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-};
+// ── Revert single ─────────────────────────────────────────────────────
+btnRevert.addEventListener('click', ()=>{
+  if(!current || !originalBuffer) return;
+  // Restore original bytes for this segment's slot only
+  const orig = originalBuffer.subarray(current.offset, current.offset + current.length);
+  fileBuffer.set(orig, current.offset);
+  current.text = current.origText;
+  editArea.value = current.text;
+  modifiedOffsets.delete(current.offset);
+  fullPreview.textContent = current.text;
+  updateLengthMeter(current.text.length, current.length);
+  btnRevert.disabled = true;
+  updateStats();
+  render();
+  setStatus(`Reverted 0x${current.offset.toString(16)} to original.`, 'ok');
+});
 
-btnRevert.onclick=()=>{
+// ── Revert all ────────────────────────────────────────────────────────
+btnRevertAll.addEventListener('click', ()=>{
   if(!originalBuffer) return;
-  if(!confirm('Revert to original buffer?')) return;
-  fileBuffer = new Uint8Array(originalBuffer.slice(0));
+  if(!confirm('Revert ALL changes to the original file?')) return;
+  fileBuffer = new Uint8Array(originalBuffer);
   scan();
-};
+  setStatus('All changes reverted.', 'ok');
+});
 
-btnRescan.onclick=scan;
-segSearch.oninput=render;
+// ── Download ──────────────────────────────────────────────────────────
+btnDownload.addEventListener('click', ()=>{
+  if(!fileBuffer) return;
+  const blob = new Blob([fileBuffer], {type:'application/octet-stream'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'global-metadata.dat';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  setStatus('File downloaded.', 'ok');
+});
+
+// ── Load file ─────────────────────────────────────────────────────────
+fileInput.addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(f) loadArrayBuffer(f.arrayBuffer(), f.name, f.size);
+});
+
+async function loadArrayBuffer(promise, name, size){
+  setStatus('Reading…', 'busy');
+  try{
+    const ab = await promise;
+    originalBuffer = new Uint8Array(ab);
+    fileBuffer     = new Uint8Array(ab.slice(0)); // mutable copy
+    statSize.textContent = formatBytes(size ?? ab.byteLength);
+    btnDownload.disabled = false;
+    btnRevertAll.disabled = false;
+    setStatus(`Loaded: ${name} — scanning…`, 'busy');
+    setTimeout(()=>{ scan(); setStatus(`Ready — ${segments.length} strings in ${name}`, 'ok'); }, 10);
+  }catch(err){
+    setStatus('Failed to read file: '+err.message, 'err');
+  }
+}
+
+// ── Fetch URL ─────────────────────────────────────────────────────────
+btnFetchGo.addEventListener('click', async ()=>{
+  const url = fetchUrl.value.trim();
+  if(!url){ setStatus('Please enter a URL.', 'err'); return; }
+  setStatus('Fetching…', 'busy');
+  try{
+    const res = await fetch(url, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status+' '+res.statusText);
+    const ab = await res.arrayBuffer();
+    const shortName = url.split('/').pop() || 'fetched-file';
+    await loadArrayBuffer(Promise.resolve(ab), shortName, ab.byteLength);
+  }catch(err){
+    let msg = 'Fetch failed: '+err.message;
+    if(err.name==='TypeError') msg += ' — likely a CORS error. Try downloading the file and loading it locally.';
+    setStatus(msg, 'err');
+  }
+});
+
+// ── Rescan ────────────────────────────────────────────────────────────
+btnRescan.addEventListener('click', scan);
+
+// ── Search ────────────────────────────────────────────────────────────
+segSearch.addEventListener('input', render);
+
+// ── Stats ─────────────────────────────────────────────────────────────
+function updateStats(){
+  statCount.textContent = segments.length;
+  statMod.textContent   = modifiedOffsets.size;
+}
+
+function formatBytes(b){
+  if(b<1024) return b+' B';
+  if(b<1048576) return (b/1024).toFixed(1)+' KB';
+  return (b/1048576).toFixed(2)+' MB';
+}
 </script>
 </body>
 </html>
