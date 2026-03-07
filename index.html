@@ -186,117 +186,159 @@ function u8ToStr(u8, off, len){ let s=''; for(let i=0;i<len;i++) s+=String.fromC
 function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtBytes(b){ return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB'; }
 
-// ── IL2CPP Parser ─────────────────────────────────────────────────────
-// Header layout (all int32 LE):
-//  0x00 magic (0xFAB11BAF)   0x04 version
-//  0x08 stringLiteralOffset  0x0C stringLiteralCount   <- table of {offset,len} pairs into data blob
-//  0x10 stringLiteralDataOffset  0x14 stringLiteralDataCount  <- raw byte blob (not null-terminated)
-//  0x18 stringOffset  0x1C stringCount                 <- null-terminated name strings
-const MAGIC = 0xFAB11BAF;
+// ── IL2CPP helpers (main thread — write only, no parsing) ─────────────
 
-function parseHeader(u8){
-  if(u8.length < 0x20) return null;
-  if(r32(u8,0) !== MAGIC) return null;
-  return {
-    version : r32(u8,4),
-    slOff   : r32(u8,0x08),   // stringLiteral table offset
-    slSize  : r32(u8,0x0C),   // stringLiteral table byte size  (entries = slSize/8)
-    sldOff  : r32(u8,0x10),   // stringLiteralData blob offset
-    sldSize : r32(u8,0x14),   // stringLiteralData blob byte size
-    sOff    : r32(u8,0x18),   // string (name) table offset
-    sSize   : r32(u8,0x1C),   // string (name) table byte size
-  };
-}
-
-function buildSegments(u8){
-  const h = parseHeader(u8);
-  if(!h) return null;
-
-  const segs = [];
-
-  // -- String Literals: table entries are {int32 dataRelOff, int32 length}
-  for(let i=0; i<h.slSize; i+=8){
-    const ptrOff = h.slOff + i;
-    if(ptrOff+8 > u8.length) break;
-    const relOff = r32(u8, ptrOff);
-    const length = r32(u8, ptrOff+4);
-    const absOff = h.sldOff + relOff;
-    if(absOff+length > u8.length) continue;
-    const text = u8ToStr(u8, absOff, length);
-    if(text.length < 1) continue;
-    segs.push({ kind:'literal', ptrOff, dataOff:absOff, length, text, origText:text, key:'L'+ptrOff });
-  }
-
-  // -- Name Strings: null-terminated, indexed by byte offset from table start
-  let i=0;
-  while(i < h.sSize){
-    const absOff = h.sOff + i;
-    if(absOff >= u8.length) break;
-    let end=i;
-    while(end < h.sSize && u8[h.sOff+end] !== 0) end++;
-    const len = end - i;
-    if(len >= 2){
-      const text = u8ToStr(u8, absOff, len);
-      segs.push({ kind:'name', offset:absOff, length:len, text, origText:text, key:'N'+absOff });
-    }
-    i = end+1;
-  }
-
-  return { segs, h };
-}
-
-// ── Scan ──────────────────────────────────────────────────────────────
+// ── Worker (IL2CPP parse + raw fallback, all off main thread) ─────────
 const WORKER_JS = `
+function r32(u8,o){return((u8[o]|(u8[o+1]<<8)|(u8[o+2]<<16)|(u8[o+3]<<24))>>>0);}
+function readStr(u8,off,len){
+  // Read in 64KB chunks to avoid call-stack overflows on huge strings
+  let s='';
+  const end=Math.min(off+len, u8.length);
+  for(let i=off;i<end;i++) s+=String.fromCharCode(u8[i]);
+  return s;
+}
+
 self.onmessage = function(e){
-  const u8 = new Uint8Array(e.data), total=u8.length, min=4;
+  const u8 = new Uint8Array(e.data);
+  const total = u8.length;
+
+  // ── Try IL2CPP ──
+  const MAGIC = 0xFAB11BAF;
+  if(total >= 0x20 && r32(u8,0) === MAGIC){
+    try{
+      const version = r32(u8,4);
+      const slOff   = r32(u8,0x08);
+      const slSize  = r32(u8,0x0C);
+      const sldOff  = r32(u8,0x10);
+      const sOff    = r32(u8,0x18);
+      const sSize   = r32(u8,0x1C);
+
+      // Sanity: offsets must be within file
+      if(slOff>total||sldOff>total||sOff>total||slSize>total||sSize>total){
+        throw new Error('header offsets out of bounds');
+      }
+
+      const segs=[];
+      const entryCount = Math.floor(slSize/8);
+      self.postMessage({type:'progress', pct:0, label:'Parsing literals (0/'+entryCount+')'});
+
+      // String literals
+      for(let i=0;i<slSize;i+=8){
+        const ptrOff = slOff+i;
+        if(ptrOff+8>total) break;
+        const relOff = r32(u8,ptrOff);
+        const length = r32(u8,ptrOff+4);
+        // Safety: skip absurd lengths
+        if(length===0||length>1048576) continue;
+        const absOff = sldOff+relOff;
+        if(absOff+length>total) continue;
+        const text = readStr(u8,absOff,length);
+        segs.push({kind:'literal',ptrOff,dataOff:absOff,length,text});
+        if(i%50000===0){
+          self.postMessage({type:'progress',pct:Math.round((i/slSize)*50),label:'Literals '+Math.round(i/slSize*100)+'%'});
+        }
+      }
+
+      self.postMessage({type:'progress',pct:50,label:'Parsing names…'});
+
+      // Name strings (null-terminated)
+      let i=0;
+      while(i<sSize){
+        const absOff=sOff+i;
+        if(absOff>=total) break;
+        let end=i;
+        while(end<sSize && u8[sOff+end]!==0) end++;
+        const len=end-i;
+        if(len>=2&&len<4096){
+          const text=readStr(u8,absOff,len);
+          segs.push({kind:'name',offset:absOff,length:len,text});
+        }
+        i=end+1;
+        if(i%100000===0){
+          self.postMessage({type:'progress',pct:50+Math.round((i/sSize)*50),label:'Names '+Math.round(i/sSize*100)+'%'});
+        }
+      }
+
+      self.postMessage({type:'done',mode:'il2cpp',version,segs});
+      return;
+    }catch(err){
+      self.postMessage({type:'log',msg:'IL2CPP parse failed: '+err.message+', falling back to raw scan'});
+    }
+  }
+
+  // ── Raw fallback ──
+  self.postMessage({type:'progress',pct:0,label:'Raw scan…'});
   const segs=[];
-  let i=0, last=0;
+  let i=0,last=0;
   while(i<total){
     const b=u8[i];
     if(b>=32&&b<=126){
-      const s=i; while(i<total&&u8[i]>=32&&u8[i]<=126)i++;
+      const s=i;
+      while(i<total&&u8[i]>=32&&u8[i]<=126)i++;
       const l=i-s;
-      if(l>=min){ let t=''; for(let j=s;j<s+l;j++)t+=String.fromCharCode(u8[j]); segs.push([s,l,t]); }
+      if(l>=4&&l<8192){
+        let t='';
+        for(let j=s;j<s+l;j++) t+=String.fromCharCode(u8[j]);
+        segs.push({kind:'raw',offset:s,length:l,text:t});
+      }
     }else i++;
-    if(i-last>5000000){last=i;self.postMessage({type:'progress',pct:Math.round(i/total*100)});}
+    if(i-last>5000000){last=i;self.postMessage({type:'progress',pct:Math.round(i/total*100),label:'Raw scan…'});}
   }
-  self.postMessage({type:'done',segs});
+  self.postMessage({type:'done',mode:'raw',segs});
 };`;
+
 let scanWorker=null;
 
 function scan(){
   if(!buf){setStatus('No file loaded','err');return;}
   segments=[]; filtered=[]; modSet.clear(); relocSet.clear(); current=null; deselect();
 
-  const parsed = buildSegments(buf);
-  if(parsed){
-    isIl2cpp=true;
-    segments=parsed.segs;
-    modeBadge.textContent='IL2CPP v'+parsed.h.version;
-    modeBadge.className='mode-badge il2cpp'; modeBadge.style.display='';
-    const lits=segments.filter(s=>s.kind==='literal').length;
-    const names=segments.filter(s=>s.kind==='name').length;
-    setStatus(`IL2CPP v${parsed.h.version} — ${lits} literals + ${names} names`,'ok');
-    updateStats(); buildFiltered(); renderVirtual();
-    return;
-  }
-
-  // Fallback raw scan
-  isIl2cpp=false;
-  modeBadge.textContent='RAW'; modeBadge.className='mode-badge raw'; modeBadge.style.display='';
-  setStatus('Not IL2CPP — raw string scan…','busy');
   if(scanWorker){scanWorker.terminate();scanWorker=null;}
   const blobUrl=URL.createObjectURL(new Blob([WORKER_JS],{type:'application/javascript'}));
   scanWorker=new Worker(blobUrl);
-  const copy=buf.buffer.slice(0);
+
+  setStatus('Parsing…','busy');
+
   scanWorker.onmessage=e=>{
-    if(e.data.type==='progress'){setStatus(`Scanning… ${e.data.pct}%`,'busy');return;}
+    const msg=e.data;
+    if(msg.type==='progress'){
+      setStatus(`${msg.label||'…'} ${msg.pct}%`,'busy');
+      return;
+    }
+    if(msg.type==='log'){
+      console.warn(msg.msg); return;
+    }
+    // done
     URL.revokeObjectURL(blobUrl); scanWorker=null;
-    segments=e.data.segs.map(([o,l,t])=>({kind:'raw',offset:o,length:l,text:t,origText:t,key:'R'+o}));
-    setStatus(`${segments.length} raw strings`,'ok');
+
+    if(msg.mode==='il2cpp'){
+      isIl2cpp=true;
+      modeBadge.textContent='IL2CPP v'+msg.version;
+      modeBadge.className='mode-badge il2cpp'; modeBadge.style.display='';
+      segments=msg.segs.map(s=>{
+        if(s.kind==='literal') return {...s,origText:s.text,key:'L'+s.ptrOff};
+        return {...s,origText:s.text,key:'N'+s.offset};
+      });
+      const lits=segments.filter(s=>s.kind==='literal').length;
+      const names=segments.filter(s=>s.kind==='name').length;
+      setStatus(`IL2CPP v${msg.version} — ${lits} literals, ${names} names`,'ok');
+    } else {
+      isIl2cpp=false;
+      modeBadge.textContent='RAW'; modeBadge.className='mode-badge raw'; modeBadge.style.display='';
+      segments=msg.segs.map(s=>({...s,origText:s.text,key:'R'+s.offset}));
+      setStatus(`${segments.length} raw strings found`,'ok');
+    }
     updateStats(); buildFiltered(); renderVirtual();
   };
-  scanWorker.onerror=err=>{setStatus('Scan error: '+err.message,'err');URL.revokeObjectURL(blobUrl);scanWorker=null;};
+
+  scanWorker.onerror=err=>{
+    setStatus('Worker error: '+err.message,'err');
+    URL.revokeObjectURL(blobUrl); scanWorker=null;
+  };
+
+  // Transfer a copy so the worker owns the buffer — zero blocking
+  const copy=buf.buffer.slice(0);
   scanWorker.postMessage(copy,[copy]);
 }
 
