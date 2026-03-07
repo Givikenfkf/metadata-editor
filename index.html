@@ -188,82 +188,75 @@ function fmtBytes(b){ return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(
 
 // ── IL2CPP helpers (main thread — write only, no parsing) ─────────────
 
-// ── Worker (IL2CPP parse + raw fallback, all off main thread) ─────────
+// ── Worker ────────────────────────────────────────────────────────────
 const WORKER_JS = `
+const dec = new TextDecoder('latin1');
 function r32(u8,o){return((u8[o]|(u8[o+1]<<8)|(u8[o+2]<<16)|(u8[o+3]<<24))>>>0);}
-function readStr(u8,off,len){
-  // Read in 64KB chunks to avoid call-stack overflows on huge strings
-  let s='';
-  const end=Math.min(off+len, u8.length);
-  for(let i=off;i<end;i++) s+=String.fromCharCode(u8[i]);
-  return s;
-}
+// Fast decode using TextDecoder — O(n) not O(n^2)
+function rd(u8,off,len){ return dec.decode(u8.subarray(off,off+len)); }
 
 self.onmessage = function(e){
   const u8 = new Uint8Array(e.data);
   const total = u8.length;
-
-  // ── Try IL2CPP ──
   const MAGIC = 0xFAB11BAF;
+
+  self.postMessage({type:'progress',pct:0,label:'Reading header…'});
+
   if(total >= 0x20 && r32(u8,0) === MAGIC){
     try{
       const version = r32(u8,4);
-      const slOff   = r32(u8,0x08);
-      const slSize  = r32(u8,0x0C);
-      const sldOff  = r32(u8,0x10);
-      const sOff    = r32(u8,0x18);
-      const sSize   = r32(u8,0x1C);
+      const slOff  = r32(u8,0x08);
+      const slSize = r32(u8,0x0C);
+      const sldOff = r32(u8,0x10);
+      const sOff   = r32(u8,0x18);
+      const sSize  = r32(u8,0x1C);
 
-      // Sanity: offsets must be within file
-      if(slOff>total||sldOff>total||sOff>total||slSize>total||sSize>total){
-        throw new Error('header offsets out of bounds');
-      }
+      if(slOff>=total||sldOff>=total||sOff>=total) throw new Error('offsets OOB');
+      // Guard against bogus table sizes (>128MB = not valid)
+      if(slSize>134217728||sSize>134217728) throw new Error('table size unreasonable');
 
       const segs=[];
-      const entryCount = Math.floor(slSize/8);
-      self.postMessage({type:'progress', pct:0, label:'Parsing literals (0/'+entryCount+')'});
 
-      // String literals
-      for(let i=0;i<slSize;i+=8){
-        const ptrOff = slOff+i;
+      // ── Literals ──
+      const litCount=Math.floor(slSize/8);
+      for(let n=0;n<litCount;n++){
+        const ptrOff=slOff+(n*8);
         if(ptrOff+8>total) break;
-        const relOff = r32(u8,ptrOff);
-        const length = r32(u8,ptrOff+4);
-        // Safety: skip absurd lengths
-        if(length===0||length>1048576) continue;
-        const absOff = sldOff+relOff;
+        const relOff=r32(u8,ptrOff);
+        const length=r32(u8,ptrOff+4);
+        if(length===0||length>65536) continue;
+        const absOff=sldOff+relOff;
         if(absOff+length>total) continue;
-        const text = readStr(u8,absOff,length);
+        const text=rd(u8,absOff,length);
         segs.push({kind:'literal',ptrOff,dataOff:absOff,length,text});
-        if(i%50000===0){
-          self.postMessage({type:'progress',pct:Math.round((i/slSize)*50),label:'Literals '+Math.round(i/slSize*100)+'%'});
-        }
+        if(n%10000===0) self.postMessage({type:'progress',pct:Math.round(n/litCount*60),label:'Literals '+n+'/'+litCount});
       }
 
-      self.postMessage({type:'progress',pct:50,label:'Parsing names…'});
+      self.postMessage({type:'progress',pct:60,label:'Parsing names…'});
 
-      // Name strings (null-terminated)
+      // ── Names ──
+      // Find all null-terminated strings in the name table
       let i=0;
+      let nCount=0;
       while(i<sSize){
         const absOff=sOff+i;
         if(absOff>=total) break;
+        // find null terminator
         let end=i;
-        while(end<sSize && u8[sOff+end]!==0) end++;
+        while(end<sSize && end-i<2048 && u8[sOff+end]!==0) end++;
         const len=end-i;
-        if(len>=2&&len<4096){
-          const text=readStr(u8,absOff,len);
-          segs.push({kind:'name',offset:absOff,length:len,text});
+        if(len>=2){
+          segs.push({kind:'name',offset:absOff,length:len,text:rd(u8,absOff,len)});
+          nCount++;
         }
         i=end+1;
-        if(i%100000===0){
-          self.postMessage({type:'progress',pct:50+Math.round((i/sSize)*50),label:'Names '+Math.round(i/sSize*100)+'%'});
-        }
+        if(nCount%20000===0) self.postMessage({type:'progress',pct:60+Math.round((i/sSize)*40),label:'Names '+nCount});
       }
 
       self.postMessage({type:'done',mode:'il2cpp',version,segs});
       return;
     }catch(err){
-      self.postMessage({type:'log',msg:'IL2CPP parse failed: '+err.message+', falling back to raw scan'});
+      self.postMessage({type:'log',msg:'IL2CPP failed ('+err.message+'), trying raw scan'});
     }
   }
 
@@ -272,18 +265,14 @@ self.onmessage = function(e){
   const segs=[];
   let i=0,last=0;
   while(i<total){
-    const b=u8[i];
-    if(b>=32&&b<=126){
+    if(u8[i]>=32&&u8[i]<=126){
       const s=i;
       while(i<total&&u8[i]>=32&&u8[i]<=126)i++;
       const l=i-s;
-      if(l>=4&&l<8192){
-        let t='';
-        for(let j=s;j<s+l;j++) t+=String.fromCharCode(u8[j]);
-        segs.push({kind:'raw',offset:s,length:l,text:t});
-      }
+      // Use TextDecoder — avoids O(n^2) string concat
+      if(l>=4&&l<=4096) segs.push({kind:'raw',offset:s,length:l,text:rd(u8,s,l)});
     }else i++;
-    if(i-last>5000000){last=i;self.postMessage({type:'progress',pct:Math.round(i/total*100),label:'Raw scan…'});}
+    if(i-last>4000000){last=i;self.postMessage({type:'progress',pct:Math.round(i/total*100),label:'Raw scan…'});}
   }
   self.postMessage({type:'done',mode:'raw',segs});
 };`;
@@ -337,8 +326,8 @@ function scan(){
     URL.revokeObjectURL(blobUrl); scanWorker=null;
   };
 
-  // Transfer a copy so the worker owns the buffer — zero blocking
-  const copy=buf.buffer.slice(0);
+  // Send a copy to worker via origBytes (avoid slicing buf which may be large)
+  const copy = origBytes.buffer.slice(0);
   scanWorker.postMessage(copy,[copy]);
 }
 
@@ -463,11 +452,12 @@ async function loadAB(promise, name){
   setStatus('Reading…','busy');
   try{
     const ab=await promise;
-    origBytes=new Uint8Array(ab);
-    buf=new Uint8Array(ab.slice(0));
+    // Keep two separate ArrayBuffers — don't copy on main thread
+    origBytes=new Uint8Array(new Uint8Array(ab)); // copy via typed array (fast, non-blocking path)
+    buf=new Uint8Array(ab);  // take ownership of original
     statSize.textContent=fmtBytes(ab.byteLength);
     btnDownload.disabled=false; btnRevertAll.disabled=false;
-    setStatus(`Loaded ${name}`,'busy');
+    setStatus(`Loaded ${name} (${fmtBytes(ab.byteLength)})`,'busy');
     setTimeout(scan,10);
   }catch(err){ setStatus('Read error: '+err.message,'err'); }
 }
