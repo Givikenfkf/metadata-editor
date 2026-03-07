@@ -7,206 +7,70 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#060c18;
-    --panel:#0a1120;
-    --panel2:#0d1528;
-    --border:rgba(52,211,153,0.08);
-    --muted:#5a7090;
-    --text:#c8daf0;
-    --accent:#34d399;
-    --accent2:#60a5fa;
-    --danger:#f87171;
-    --warn:#fbbf24;
+    --bg:#060c18;--panel:#0a1120;--border:rgba(52,211,153,0.08);
+    --muted:#5a7090;--text:#c8daf0;--accent:#34d399;--accent2:#60a5fa;
+    --danger:#f87171;--warn:#fbbf24;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{
-    font-family:'Syne',system-ui,sans-serif;
-    background:var(--bg);
-    color:var(--text);
-    min-height:100vh;
-    background-image:
-      radial-gradient(ellipse at 20% 0%, rgba(52,211,153,0.04) 0%, transparent 60%),
-      radial-gradient(ellipse at 80% 100%, rgba(96,165,250,0.04) 0%, transparent 60%);
-  }
+  body{font-family:'Syne',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
+    background-image:radial-gradient(ellipse at 20% 0%,rgba(52,211,153,0.04) 0%,transparent 60%),radial-gradient(ellipse at 80% 100%,rgba(96,165,250,0.04) 0%,transparent 60%);}
   .wrap{max-width:1100px;margin:0 auto;padding:20px 16px}
-  header{
-    display:flex;align-items:center;gap:16px;
-    border-bottom:1px solid var(--border);
-    padding-bottom:16px;margin-bottom:20px;
-  }
-  .logo{
-    width:38px;height:38px;border-radius:10px;
-    background:linear-gradient(135deg,var(--accent),var(--accent2));
-    display:flex;align-items:center;justify-content:center;
-    font-size:20px;flex-shrink:0;
-  }
-  h1{font-size:17px;font-weight:700;letter-spacing:0.02em;color:#e8f4ff}
+  header{display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:20px}
+  .logo{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+  h1{font-size:17px;font-weight:700;letter-spacing:.02em;color:#e8f4ff}
   .subtitle{font-size:12px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace}
-
   .grid{display:grid;grid-template-columns:340px 1fr;gap:14px}
-  .panel{
-    background:var(--panel);
-    border:1px solid var(--border);
-    border-radius:12px;
-    padding:14px;
-  }
-
-  /* URL bar */
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
   .url-row{display:flex;gap:6px;margin-bottom:10px}
-  .url-input{
-    flex:1;padding:7px 10px;border-radius:8px;
-    border:1px solid var(--border);
-    background:rgba(255,255,255,0.02);
-    color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;
-    outline:none;transition:border-color 0.2s;
-  }
-  .url-input:focus{border-color:rgba(52,211,153,0.3)}
-  .url-input::placeholder{color:var(--muted)}
-
-  /* Buttons */
-  .btn{
-    padding:7px 12px;border-radius:8px;border:none;
-    font:600 12px 'Syne',system-ui;cursor:pointer;
-    transition:opacity 0.15s,transform 0.1s;white-space:nowrap;
-  }
-  .btn:hover{opacity:0.85}
-  .btn:active{transform:scale(0.97)}
+  .url-input,.search-box{padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.02);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;transition:border-color .2s}
+  .url-input{flex:1}.search-box{width:100%;margin-bottom:8px}
+  .url-input:focus,.search-box:focus{border-color:rgba(52,211,153,.3)}
+  .url-input::placeholder,.search-box::placeholder{color:var(--muted)}
+  .btn{padding:7px 12px;border-radius:8px;border:none;font:600 12px 'Syne',system-ui;cursor:pointer;transition:opacity .15s,transform .1s;white-space:nowrap}
+  .btn:hover{opacity:.85}.btn:active{transform:scale(.97)}
   .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#031a10}
-  .btn-ghost{background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--muted)}
-  .btn-ghost:hover{color:var(--text);border-color:rgba(255,255,255,0.1)}
-  .btn-danger{background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.2);color:var(--danger)}
-
+  .btn-ghost{background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--muted)}
+  .btn-ghost:hover{color:var(--text);border-color:rgba(255,255,255,.1)}
+  .btn-danger{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.2);color:var(--danger)}
   .toolbar{display:flex;gap:6px;align-items:center;margin-bottom:10px}
   .toolbar .btn{font-size:11px}
-
-  /* Status */
-  #statusBar{
-    padding:6px 10px;border-radius:7px;
-    background:rgba(255,255,255,0.02);border:1px solid var(--border);
-    font-family:'JetBrains Mono',monospace;font-size:11px;
-    color:var(--muted);margin-bottom:10px;
-    min-height:30px;display:flex;align-items:center;gap:6px;
-  }
+  #statusBar{padding:6px 10px;border-radius:7px;background:rgba(255,255,255,.02);border:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:10px;min-height:30px;display:flex;align-items:center;gap:6px}
   .status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
-  .status-dot.ok{background:var(--accent)}
-  .status-dot.err{background:var(--danger)}
-  .status-dot.busy{background:var(--warn);animation:pulse 1s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-
-  /* Search */
-  .search-box{
-    width:100%;padding:7px 10px;border-radius:8px;
-    border:1px solid var(--border);
-    background:rgba(255,255,255,0.02);
-    color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace;
-    outline:none;margin-bottom:8px;transition:border-color 0.2s;
-  }
-  .search-box:focus{border-color:rgba(52,211,153,0.3)}
-  .search-box::placeholder{color:var(--muted)}
-
-  /* String list */
-  .seg-list{
-    height:380px;overflow-y:auto;
-    border-radius:8px;border:1px solid var(--border);
-    background:rgba(255,255,255,0.01);
-    position:relative;
-  }
-  .seg-list::-webkit-scrollbar{width:4px}
-  .seg-list::-webkit-scrollbar-track{background:transparent}
-  .seg-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
-
-  .seg-item{
-    padding:6px 8px;border-radius:6px;cursor:pointer;
-    transition:background 0.1s;
-    overflow:hidden;
-  }
-  .seg-item:hover{background:rgba(255,255,255,0.04)}
-  .seg-item.sel{
-    background:rgba(52,211,153,0.07);
-    border:1px solid rgba(52,211,153,0.15);
-  }
-  .seg-item.modified{border-left:2px solid var(--warn) !important}
+  .status-dot.ok{background:var(--accent)}.status-dot.err{background:var(--danger)}.status-dot.busy{background:var(--warn);animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .mode-badge{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-left:auto;display:none}
+  .mode-badge.il2cpp{background:rgba(52,211,153,.15);color:var(--accent);border:1px solid rgba(52,211,153,.3)}
+  .mode-badge.raw{background:rgba(96,165,250,.15);color:var(--accent2);border:1px solid rgba(96,165,250,.3)}
+  .seg-list{height:370px;overflow-y:auto;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.01);position:relative}
+  .seg-list::-webkit-scrollbar{width:4px}.seg-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px}
+  .seg-item{padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .1s;overflow:hidden}
+  .seg-item:hover{background:rgba(255,255,255,.04)}
+  .seg-item.sel{background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.15)}
+  .seg-item.modified{border-left:2px solid var(--warn)!important}
+  .seg-item.relocated{border-left:2px solid var(--accent)!important}
   .seg-offset{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);margin-bottom:2px}
-  .seg-text{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
-
-  /* Right panel */
+  .seg-text{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
   .right-panel{display:flex;flex-direction:column;gap:12px}
-  .section-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px}
-  .sel-meta{
-    font-family:'JetBrains Mono',monospace;font-size:12px;
-    color:var(--accent2);padding:6px 8px;
-    background:rgba(96,165,250,0.05);border-radius:6px;
-    border:1px solid rgba(96,165,250,0.1);
-    min-height:28px;
-  }
-
-  /* Edit textarea */
-  #editArea{
-    width:100%;height:120px;
-    border-radius:8px;border:1px solid var(--border);
-    background:rgba(255,255,255,0.02);
-    color:var(--text);padding:10px;
-    font-family:'JetBrains Mono',monospace;font-size:12px;
-    resize:vertical;outline:none;
-    transition:border-color 0.2s;
-    line-height:1.5;
-  }
-  #editArea:focus{border-color:rgba(52,211,153,0.3)}
-  #editArea:disabled{opacity:0.4;cursor:not-allowed}
-
-  /* Length meter */
-  .len-meter{
-    display:flex;align-items:center;gap:8px;
-    font-family:'JetBrains Mono',monospace;font-size:11px;
-    margin-top:4px;
-  }
-  .len-bar-bg{flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
-  .len-bar{height:100%;border-radius:2px;transition:width 0.2s,background 0.2s;background:var(--accent)}
-  .len-text{color:var(--muted);white-space:nowrap}
-  .len-warn{color:var(--warn)}
-  .len-over{color:var(--danger)}
-
-  /* Action buttons */
+  .section-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+  .sel-meta{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent2);padding:6px 8px;background:rgba(96,165,250,.05);border-radius:6px;border:1px solid rgba(96,165,250,.1);min-height:28px;line-height:1.5}
+  #editArea{width:100%;height:120px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.02);color:var(--text);padding:10px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical;outline:none;transition:border-color .2s;line-height:1.5}
+  #editArea:focus{border-color:rgba(52,211,153,.3)}
+  #editArea:disabled{opacity:.4;cursor:not-allowed}
+  .len-meter{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:4px}
+  .len-bar-bg{flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+  .len-bar{height:100%;border-radius:2px;transition:width .2s,background .2s;background:var(--accent)}
+  .len-text{color:var(--muted);white-space:nowrap;min-width:60px}
+  .info-box{padding:8px 10px;border-radius:7px;font-size:11px;line-height:1.5;display:none;margin-top:6px}
+  .info-box.show{display:block}
+  .info-box.warn{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);color:var(--warn)}
+  .info-box.ok{background:rgba(52,211,153,.05);border:1px solid rgba(52,211,153,.2);color:var(--accent)}
+  .info-box.info{background:rgba(96,165,250,.05);border:1px solid rgba(96,165,250,.2);color:var(--accent2)}
   .action-row{display:flex;gap:8px;flex-wrap:wrap}
-
-  /* Warning box */
-  .warning-box{
-    padding:8px 10px;border-radius:7px;
-    background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);
-    font-size:11px;color:var(--warn);line-height:1.5;
-    display:none;
-  }
-  .warning-box.show{display:block}
-
-  /* Preview */
-  #fullPreview{
-    background:rgba(255,255,255,0.01);
-    border:1px solid var(--border);
-    border-radius:8px;padding:10px;
-    font-family:'JetBrains Mono',monospace;font-size:11px;
-    color:var(--muted);max-height:140px;overflow:auto;
-    white-space:pre-wrap;word-break:break-all;
-    line-height:1.6;
-  }
-  #fullPreview::-webkit-scrollbar{width:4px}
-  #fullPreview::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
-
-  /* Stats bar */
-  .stats-bar{
-    display:flex;gap:16px;flex-wrap:wrap;
-    padding:8px 12px;border-radius:8px;
-    background:rgba(255,255,255,0.01);border:1px solid var(--border);
-    font-family:'JetBrains Mono',monospace;font-size:11px;
-  }
+  #fullPreview{background:rgba(255,255,255,.01);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);max-height:120px;overflow:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6}
+  .stats-bar{display:flex;gap:16px;flex-wrap:wrap;padding:8px 12px;border-radius:8px;background:rgba(255,255,255,.01);border:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:10px}
   .stat{display:flex;gap:6px;align-items:center}
-  .stat-label{color:var(--muted)}
-  .stat-val{color:var(--accent2)}
-
-  @media(max-width:860px){
-    .grid{grid-template-columns:1fr}
-    .seg-list{height:240px}
-  }
+  .stat-label{color:var(--muted)}.stat-val{color:var(--accent2)}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}.seg-list{height:240px}}
 </style>
 </head>
 <body>
@@ -215,12 +79,11 @@
     <div class="logo">🦍</div>
     <div>
       <h1>GorillaTag Metadata Helper</h1>
-      <div class="subtitle">global-metadata.dat string editor — safe in-place editing</div>
+      <div class="subtitle">global-metadata.dat editor — IL2CPP-aware with string relocation</div>
     </div>
   </header>
 
   <div class="grid">
-    <!-- LEFT: file + list -->
     <div class="panel">
       <div class="url-row">
         <input id="fetchUrl" class="url-input" placeholder="https://example.com/global-metadata.dat" />
@@ -230,46 +93,41 @@
         <button id="btnFetchGo" class="btn btn-primary">⬇ Fetch URL</button>
         <button id="btnRescan" class="btn btn-ghost" style="margin-left:auto">↺ Rescan</button>
       </div>
-
       <div id="statusBar">
         <div class="status-dot" id="statusDot"></div>
         <span id="statusText">Idle — load a file or fetch from URL</span>
+        <span class="mode-badge" id="modeBadge"></span>
       </div>
-
       <input id="segSearch" class="search-box" placeholder="Search text or 0xoffset…" />
       <div id="segList" class="seg-list"></div>
-
-      <div class="stats-bar" style="margin-top:10px">
+      <div class="stats-bar">
         <div class="stat"><span class="stat-label">Strings:</span><span class="stat-val" id="statCount">0</span></div>
         <div class="stat"><span class="stat-label">Modified:</span><span class="stat-val" id="statMod">0</span></div>
+        <div class="stat"><span class="stat-label">Relocated:</span><span class="stat-val" id="statReloc">0</span></div>
         <div class="stat"><span class="stat-label">File:</span><span class="stat-val" id="statSize">—</span></div>
       </div>
     </div>
 
-    <!-- RIGHT: editor -->
     <div class="panel right-panel">
       <div>
         <div class="section-label">Selected String</div>
         <div id="selMeta" class="sel-meta">Nothing selected — pick a string from the list</div>
       </div>
-
       <div>
-        <div class="section-label">Edit Value</div>
+        <div class="section-label">Edit Value <span id="editModeTag" style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-transform:none;font-weight:400;letter-spacing:0"></span></div>
         <textarea id="editArea" disabled placeholder="Select a string to edit…"></textarea>
         <div class="len-meter">
           <div class="len-bar-bg"><div class="len-bar" id="lenBar" style="width:0%"></div></div>
-          <div class="len-text" id="lenText">0 / 0</div>
+          <div class="len-text" id="lenText"></div>
         </div>
-        <div class="warning-box" id="warnBox"></div>
+        <div class="info-box" id="infoBox"></div>
       </div>
-
       <div class="action-row">
-        <button id="btnApply" class="btn btn-primary" disabled>✓ Apply (in-place)</button>
-        <button id="btnRevert" class="btn btn-ghost" disabled>↺ Revert this string</button>
+        <button id="btnApply" class="btn btn-primary" disabled>✓ Apply</button>
+        <button id="btnRevert" class="btn btn-ghost" disabled>↺ Revert</button>
         <button id="btnDownload" class="btn btn-ghost" disabled>⬇ Download .dat</button>
         <button id="btnRevertAll" class="btn btn-danger" disabled>✕ Revert All</button>
       </div>
-
       <div>
         <div class="section-label">Preview</div>
         <div id="fullPreview">—</div>
@@ -279,388 +137,413 @@
 </div>
 
 <script>
-// ── DOM refs ──────────────────────────────────────────────────────────
-const fileInput   = document.getElementById('fileInput');
-const fetchUrl    = document.getElementById('fetchUrl');
-const btnFetchGo  = document.getElementById('btnFetchGo');
-const btnRescan   = document.getElementById('btnRescan');
-const segSearch   = document.getElementById('segSearch');
-const segList     = document.getElementById('segList');
-const selMeta     = document.getElementById('selMeta');
-const editArea    = document.getElementById('editArea');
-const lenBar      = document.getElementById('lenBar');
-const lenText     = document.getElementById('lenText');
-const warnBox     = document.getElementById('warnBox');
-const btnApply    = document.getElementById('btnApply');
-const btnRevert   = document.getElementById('btnRevert');
-const btnDownload = document.getElementById('btnDownload');
-const btnRevertAll= document.getElementById('btnRevertAll');
-const fullPreview = document.getElementById('fullPreview');
-const statusDot   = document.getElementById('statusDot');
-const statusText  = document.getElementById('statusText');
-const statCount   = document.getElementById('statCount');
-const statMod     = document.getElementById('statMod');
-const statSize    = document.getElementById('statSize');
+const fileInput    = document.getElementById('fileInput');
+const fetchUrl     = document.getElementById('fetchUrl');
+const btnFetchGo   = document.getElementById('btnFetchGo');
+const btnRescan    = document.getElementById('btnRescan');
+const segSearch    = document.getElementById('segSearch');
+const segListEl    = document.getElementById('segList');
+const selMeta      = document.getElementById('selMeta');
+const editArea     = document.getElementById('editArea');
+const lenBar       = document.getElementById('lenBar');
+const lenText      = document.getElementById('lenText');
+const infoBox      = document.getElementById('infoBox');
+const btnApply     = document.getElementById('btnApply');
+const btnRevert    = document.getElementById('btnRevert');
+const btnDownload  = document.getElementById('btnDownload');
+const btnRevertAll = document.getElementById('btnRevertAll');
+const fullPreview  = document.getElementById('fullPreview');
+const statusDot    = document.getElementById('statusDot');
+const statusText   = document.getElementById('statusText');
+const modeBadge    = document.getElementById('modeBadge');
+const editModeTag  = document.getElementById('editModeTag');
+const statCount    = document.getElementById('statCount');
+const statMod      = document.getElementById('statMod');
+const statReloc    = document.getElementById('statReloc');
+const statSize     = document.getElementById('statSize');
 
 // ── State ─────────────────────────────────────────────────────────────
-let originalBuffer = null;   // Uint8Array — never mutated after load
-let fileBuffer     = null;   // Uint8Array — working copy, in-place edits only
-let segments       = [];     // [{offset, length, origText, text}]
-let current        = null;   // selected segment object
-let modifiedOffsets= new Set();
+let origBytes  = null;   // immutable original
+let buf        = null;   // mutable working copy (may grow via relocation)
+let isIl2cpp   = false;
+let segments   = [];
+let filtered   = [];
+let current    = null;
+let modSet     = new Set();
+let relocSet   = new Set();
 
-// ── Status helpers ────────────────────────────────────────────────────
-function setStatus(msg, state='idle'){
+// ── Helpers ───────────────────────────────────────────────────────────
+function setStatus(msg, state){
   statusText.textContent = msg;
   statusDot.className = 'status-dot' + (state==='ok'?' ok':state==='err'?' err':state==='busy'?' busy':'');
 }
+function r32(u8, o){ return ((u8[o]|(u8[o+1]<<8)|(u8[o+2]<<16)|(u8[o+3]<<24))>>>0); }
+function w32(u8, o, v){
+  v=v>>>0; u8[o]=v&0xFF; u8[o+1]=(v>>8)&0xFF; u8[o+2]=(v>>16)&0xFF; u8[o+3]=(v>>24)&0xFF;
+}
+function strToU8(s){ const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i)&0xFF; return a; }
+function u8ToStr(u8, off, len){ let s=''; for(let i=0;i<len;i++) s+=String.fromCharCode(u8[off+i]); return s; }
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtBytes(b){ return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB'; }
 
-// ── Codec helpers ─────────────────────────────────────────────────────
-// We use latin-1 (byte-for-byte) so we never corrupt binary data.
-function isPrintable(b){ return b >= 32 && b <= 126; }
+// ── IL2CPP Parser ─────────────────────────────────────────────────────
+// Header layout (all int32 LE):
+//  0x00 magic (0xFAB11BAF)   0x04 version
+//  0x08 stringLiteralOffset  0x0C stringLiteralCount   <- table of {offset,len} pairs into data blob
+//  0x10 stringLiteralDataOffset  0x14 stringLiteralDataCount  <- raw byte blob (not null-terminated)
+//  0x18 stringOffset  0x1C stringCount                 <- null-terminated name strings
+const MAGIC = 0xFAB11BAF;
 
-function readString(buf, offset, length){
-  // Read exactly `length` bytes from offset as latin-1
-  return new TextDecoder('latin1').decode(buf.subarray(offset, offset+length));
+function parseHeader(u8){
+  if(u8.length < 0x20) return null;
+  if(r32(u8,0) !== MAGIC) return null;
+  return {
+    version : r32(u8,4),
+    slOff   : r32(u8,0x08),   // stringLiteral table offset
+    slSize  : r32(u8,0x0C),   // stringLiteral table byte size  (entries = slSize/8)
+    sldOff  : r32(u8,0x10),   // stringLiteralData blob offset
+    sldSize : r32(u8,0x14),   // stringLiteralData blob byte size
+    sOff    : r32(u8,0x18),   // string (name) table offset
+    sSize   : r32(u8,0x1C),   // string (name) table byte size
+  };
 }
 
-function writeStringInPlace(buf, offset, maxLen, newStr){
-  /**
-   * KEY SAFETY RULE:
-   * We ONLY ever write within [offset, offset+maxLen).
-   * If newStr is shorter  → write newStr bytes, then fill remainder with 0x00
-   *                         (null bytes — safe padding that won't show as printable)
-   * If newStr is longer   → truncate to maxLen (caller already warned user)
-   * This ensures we never move any bytes or change file size.
-   */
-  const bytes = new TextEncoder().encode(newStr); // UTF-8; for ASCII same as latin-1
-  const writeLen = Math.min(bytes.length, maxLen);
-  for(let i=0; i<writeLen; i++) buf[offset+i] = bytes[i];
-  // Zero-pad the remainder so old chars don't bleed through
-  for(let i=writeLen; i<maxLen; i++) buf[offset+i] = 0x00;
-}
+function buildSegments(u8){
+  const h = parseHeader(u8);
+  if(!h) return null;
 
-// ── Scan (Web Worker so UI never freezes) ─────────────────────────────
-const WORKER_SRC = `
-self.onmessage = function(e){
-  const buf = e.data; // SharedArrayBuffer or transferred ArrayBuffer
-  const u8 = new Uint8Array(buf);
   const segs = [];
-  const minLen = 4;
-  let i = 0;
-  const total = u8.length;
-  let lastReport = 0;
-  while(i < total){
-    const b = u8[i];
-    if(b >= 32 && b <= 126){
-      const start = i;
-      while(i < total && u8[i] >= 32 && u8[i] <= 126) i++;
-      const length = i - start;
-      if(length >= minLen){
-        // decode latin-1 inline (fast, no TextDecoder overhead in tight loop)
-        let text = '';
-        for(let j=start; j<start+length; j++) text += String.fromCharCode(u8[j]);
-        segs.push([start, length, text]);
-      }
-    } else {
-      i++;
-    }
-    // progress every ~5 MB
-    if(i - lastReport > 5000000){
-      lastReport = i;
-      self.postMessage({type:'progress', pct: Math.round(i/total*100)});
-    }
-  }
-  self.postMessage({type:'done', segs});
-};
-`;
 
-let scanWorker = null;
+  // -- String Literals: table entries are {int32 dataRelOff, int32 length}
+  for(let i=0; i<h.slSize; i+=8){
+    const ptrOff = h.slOff + i;
+    if(ptrOff+8 > u8.length) break;
+    const relOff = r32(u8, ptrOff);
+    const length = r32(u8, ptrOff+4);
+    const absOff = h.sldOff + relOff;
+    if(absOff+length > u8.length) continue;
+    const text = u8ToStr(u8, absOff, length);
+    if(text.length < 1) continue;
+    segs.push({ kind:'literal', ptrOff, dataOff:absOff, length, text, origText:text, key:'L'+ptrOff });
+  }
+
+  // -- Name Strings: null-terminated, indexed by byte offset from table start
+  let i=0;
+  while(i < h.sSize){
+    const absOff = h.sOff + i;
+    if(absOff >= u8.length) break;
+    let end=i;
+    while(end < h.sSize && u8[h.sOff+end] !== 0) end++;
+    const len = end - i;
+    if(len >= 2){
+      const text = u8ToStr(u8, absOff, len);
+      segs.push({ kind:'name', offset:absOff, length:len, text, origText:text, key:'N'+absOff });
+    }
+    i = end+1;
+  }
+
+  return { segs, h };
+}
+
+// ── Scan ──────────────────────────────────────────────────────────────
+const WORKER_JS = `
+self.onmessage = function(e){
+  const u8 = new Uint8Array(e.data), total=u8.length, min=4;
+  const segs=[];
+  let i=0, last=0;
+  while(i<total){
+    const b=u8[i];
+    if(b>=32&&b<=126){
+      const s=i; while(i<total&&u8[i]>=32&&u8[i]<=126)i++;
+      const l=i-s;
+      if(l>=min){ let t=''; for(let j=s;j<s+l;j++)t+=String.fromCharCode(u8[j]); segs.push([s,l,t]); }
+    }else i++;
+    if(i-last>5000000){last=i;self.postMessage({type:'progress',pct:Math.round(i/total*100)});}
+  }
+  self.postMessage({type:'done',segs});
+};`;
+let scanWorker=null;
 
 function scan(){
-  if(!fileBuffer){ setStatus('No file loaded.','err'); return; }
-  segments = [];
-  modifiedOffsets.clear();
-  filteredSegments = [];
-  current = null;
-  selMeta.textContent = 'Nothing selected — pick a string from the list';
-  editArea.value = '';
-  editArea.disabled = true;
-  fullPreview.textContent = '—';
-  btnApply.disabled = true;
-  btnRevert.disabled = true;
-  updateLengthMeter(0,0);
+  if(!buf){setStatus('No file loaded','err');return;}
+  segments=[]; filtered=[]; modSet.clear(); relocSet.clear(); current=null; deselect();
 
-  // Kill any previous worker
-  if(scanWorker){ scanWorker.terminate(); scanWorker = null; }
+  const parsed = buildSegments(buf);
+  if(parsed){
+    isIl2cpp=true;
+    segments=parsed.segs;
+    modeBadge.textContent='IL2CPP v'+parsed.h.version;
+    modeBadge.className='mode-badge il2cpp'; modeBadge.style.display='';
+    const lits=segments.filter(s=>s.kind==='literal').length;
+    const names=segments.filter(s=>s.kind==='name').length;
+    setStatus(`IL2CPP v${parsed.h.version} — ${lits} literals + ${names} names`,'ok');
+    updateStats(); buildFiltered(); renderVirtual();
+    return;
+  }
 
-  setStatus('Scanning… 0%', 'busy');
-
-  const blob = new Blob([WORKER_SRC], {type:'application/javascript'});
-  const workerUrl = URL.createObjectURL(blob);
-  scanWorker = new Worker(workerUrl);
-
-  // Transfer a copy so worker owns it (non-blocking transfer)
-  const copy = fileBuffer.buffer.slice(0);
-  scanWorker.onmessage = (e) => {
-    const msg = e.data;
-    if(msg.type === 'progress'){
-      setStatus(`Scanning… ${msg.pct}%`, 'busy');
-    } else if(msg.type === 'done'){
-      URL.revokeObjectURL(workerUrl);
-      scanWorker = null;
-      // Rebuild segment objects from compact arrays
-      segments = msg.segs.map(([offset, length, text]) => ({
-        offset, length, origText: text, text
-      }));
-      setStatus(`Scan complete — ${segments.length} strings found.`, 'ok');
-      updateStats();
-      buildFiltered();
-      renderVirtual();
-    }
+  // Fallback raw scan
+  isIl2cpp=false;
+  modeBadge.textContent='RAW'; modeBadge.className='mode-badge raw'; modeBadge.style.display='';
+  setStatus('Not IL2CPP — raw string scan…','busy');
+  if(scanWorker){scanWorker.terminate();scanWorker=null;}
+  const blobUrl=URL.createObjectURL(new Blob([WORKER_JS],{type:'application/javascript'}));
+  scanWorker=new Worker(blobUrl);
+  const copy=buf.buffer.slice(0);
+  scanWorker.onmessage=e=>{
+    if(e.data.type==='progress'){setStatus(`Scanning… ${e.data.pct}%`,'busy');return;}
+    URL.revokeObjectURL(blobUrl); scanWorker=null;
+    segments=e.data.segs.map(([o,l,t])=>({kind:'raw',offset:o,length:l,text:t,origText:t,key:'R'+o}));
+    setStatus(`${segments.length} raw strings`,'ok');
+    updateStats(); buildFiltered(); renderVirtual();
   };
-  scanWorker.onerror = (err) => {
-    setStatus('Scan error: ' + err.message, 'err');
-    URL.revokeObjectURL(workerUrl);
-    scanWorker = null;
-  };
-  scanWorker.postMessage(copy, [copy]);
+  scanWorker.onerror=err=>{setStatus('Scan error: '+err.message,'err');URL.revokeObjectURL(blobUrl);scanWorker=null;};
+  scanWorker.postMessage(copy,[copy]);
 }
 
-// ── Virtual scroll list ───────────────────────────────────────────────
-const ITEM_H = 46; // px per row — must match CSS
-let filteredSegments = [];
-let vsOffset = 0; // scroll top in items
+// ── Apply ─────────────────────────────────────────────────────────────
+btnApply.addEventListener('click',()=>{
+  if(!current||!buf) return;
+  const newText=editArea.value;
+  const newB=strToU8(newText);
+
+  if(current.kind==='literal'){
+    if(newB.length<=current.length){
+      // In-place: write bytes, zero-pad rest, update length in pointer table
+      for(let i=0;i<newB.length;i++) buf[current.dataOff+i]=newB[i];
+      for(let i=newB.length;i<current.length;i++) buf[current.dataOff+i]=0;
+      w32(buf, current.ptrOff+4, newB.length);
+      current.length=newB.length; current.text=newText;
+      setStatus(`✓ Applied in-place @ 0x${current.dataOff.toString(16)}`,'ok');
+    } else {
+      // Relocate: append to end of file, update pointer table entry
+      const appendAt=buf.length;
+      const grown=new Uint8Array(buf.length+newB.length);
+      grown.set(buf); grown.set(newB,appendAt);
+      buf=grown;
+      // pointer entry offset = relative to sldOff
+      const sldOff=r32(buf,0x10);
+      w32(buf, current.ptrOff,   appendAt-sldOff);   // new relative offset
+      w32(buf, current.ptrOff+4, newB.length);        // new length
+      // extend stringLiteralDataCount so the blob covers our appended data
+      w32(buf, 0x14, appendAt+newB.length-sldOff);
+      current.dataOff=appendAt; current.length=newB.length; current.text=newText;
+      relocSet.add(current.key);
+      setStatus(`✦ Relocated → 0x${appendAt.toString(16)}, file +${newB.length}B`,'ok');
+    }
+  } else if(current.kind==='name'){
+    // Name strings: in-place only, truncate if too long
+    const safe=newText.slice(0,current.length);
+    const safeB=strToU8(safe);
+    for(let i=0;i<safeB.length;i++) buf[current.offset+i]=safeB[i];
+    buf[current.offset+safeB.length]=0;
+    for(let i=safeB.length+1;i<=current.length;i++) buf[current.offset+i]=0;
+    current.text=safe;
+    if(safe.length<newText.length) setStatus('⚠ Truncated — name strings are in-place only','ok');
+    else setStatus('✓ Applied name edit','ok');
+  } else {
+    // Raw: in-place only
+    const safe=newText.slice(0,current.length);
+    const safeB=strToU8(safe);
+    for(let i=0;i<safeB.length;i++) buf[current.offset+i]=safeB[i];
+    for(let i=safeB.length;i<current.length;i++) buf[current.offset+i]=0;
+    current.text=safe;
+    setStatus('✓ Applied raw edit','ok');
+  }
+
+  modSet.add(current.key);
+  editArea.value=current.text;
+  fullPreview.textContent=current.text;
+  updateLengthMeter(current.text.length,current.length);
+  updateInfoBox(current.text.length,current.length,current.kind);
+  btnRevert.disabled=false;
+  updateStats(); renderVirtual();
+});
+
+// ── Revert single ─────────────────────────────────────────────────────
+btnRevert.addEventListener('click',()=>{
+  if(!current||!origBytes) return;
+  if(current.kind==='literal'){
+    const origB=strToU8(current.origText);
+    // restore pointer from original buffer
+    const origRelOff=r32(origBytes, current.ptrOff);
+    const origSldOff=r32(origBytes, 0x10);
+    const origAbsOff=origSldOff+origRelOff;
+    w32(buf, current.ptrOff, origRelOff);
+    w32(buf, current.ptrOff+4, origB.length);
+    for(let i=0;i<origB.length;i++) buf[origAbsOff+i]=origB[i];
+    w32(buf, 0x14, r32(origBytes,0x14));
+    current.dataOff=origAbsOff; current.length=origB.length; current.text=current.origText;
+  } else {
+    const origB=strToU8(current.origText);
+    for(let i=0;i<origB.length;i++) buf[current.offset+i]=origB[i];
+    if(current.kind==='name') buf[current.offset+origB.length]=0;
+    else for(let i=origB.length;i<current.length;i++) buf[current.offset+i]=0;
+    current.text=current.origText;
+  }
+  modSet.delete(current.key); relocSet.delete(current.key);
+  editArea.value=current.text; fullPreview.textContent=current.text;
+  updateLengthMeter(current.text.length,current.length);
+  updateInfoBox(current.text.length,current.length,current.kind);
+  btnRevert.disabled=true;
+  updateStats(); buildFiltered(); renderVirtual();
+  setStatus('Reverted','ok');
+});
+
+btnRevertAll.addEventListener('click',()=>{
+  if(!origBytes||!confirm('Revert ALL changes?')) return;
+  buf=new Uint8Array(origBytes); scan();
+});
+
+btnDownload.addEventListener('click',()=>{
+  if(!buf) return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
+  a.download='global-metadata.dat';
+  document.body.appendChild(a); a.click(); a.remove();
+  setStatus('Downloaded','ok');
+});
+
+// ── Load ──────────────────────────────────────────────────────────────
+fileInput.addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadAB(f.arrayBuffer(),f.name); });
+btnFetchGo.addEventListener('click',async()=>{
+  const url=fetchUrl.value.trim();
+  if(!url){setStatus('Enter a URL','err');return;}
+  setStatus('Fetching…','busy');
+  try{
+    const res=await fetch(url,{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    await loadAB(res.arrayBuffer(), url.split('/').pop()||'file');
+  }catch(err){ setStatus('Fetch failed: '+err.message+(err.name==='TypeError'?' (CORS?)':''),'err'); }
+});
+btnRescan.addEventListener('click',scan);
+
+async function loadAB(promise, name){
+  setStatus('Reading…','busy');
+  try{
+    const ab=await promise;
+    origBytes=new Uint8Array(ab);
+    buf=new Uint8Array(ab.slice(0));
+    statSize.textContent=fmtBytes(ab.byteLength);
+    btnDownload.disabled=false; btnRevertAll.disabled=false;
+    setStatus(`Loaded ${name}`,'busy');
+    setTimeout(scan,10);
+  }catch(err){ setStatus('Read error: '+err.message,'err'); }
+}
+
+// ── Select / Deselect ─────────────────────────────────────────────────
+function selectSegment(s){
+  current=s; renderVirtual();
+  let meta='';
+  if(s.kind==='literal') meta=`LITERAL  ptr@0x${s.ptrOff.toString(16)}  data@0x${s.dataOff.toString(16)}  len:${s.length}`;
+  else if(s.kind==='name') meta=`NAME  0x${s.offset.toString(16)}  len:${s.length}`;
+  else meta=`RAW  0x${s.offset.toString(16)}  len:${s.length}`;
+  selMeta.textContent=meta;
+  editArea.value=s.text; editArea.disabled=false;
+  btnApply.disabled=false;
+  btnRevert.disabled=!modSet.has(s.key);
+  fullPreview.textContent=s.text;
+  updateLengthMeter(s.text.length,s.length);
+  updateInfoBox(s.text.length,s.length,s.kind);
+  editModeTag.textContent=s.kind==='literal'?'— unlimited (relocates if longer)':'— capped to original length';
+}
+
+function deselect(){
+  selMeta.textContent='Nothing selected';
+  editArea.value=''; editArea.disabled=true;
+  fullPreview.textContent='—';
+  btnApply.disabled=true; btnRevert.disabled=true;
+  updateLengthMeter(0,0); infoBox.className='info-box'; editModeTag.textContent='';
+}
+
+// ── Meters ────────────────────────────────────────────────────────────
+function updateLengthMeter(cur,max){
+  if(!max){lenText.textContent='';lenBar.style.width='0%';return;}
+  const pct=Math.min(100,(cur/max)*100);
+  lenBar.style.width=pct+'%';
+  lenBar.style.background=cur>max?'var(--accent2)':cur/max>0.9?'var(--warn)':'var(--accent)';
+  lenText.textContent=cur+' / '+max;
+}
+
+function updateInfoBox(cur,max,kind){
+  infoBox.className='info-box';
+  if(kind==='literal'){
+    if(cur>max){ infoBox.className='info-box info show'; infoBox.textContent=`✦ ${cur-max}B over original — will relocate to end of file. Safe, no corruption.`; }
+    else if(cur<max){ infoBox.className='info-box ok show'; infoBox.textContent=`✓ ${max-cur}B spare — written in-place, padded with zeros.`; }
+  } else {
+    if(cur>max){ infoBox.className='info-box warn show'; infoBox.textContent=`⚠ ${cur-max}B over — will truncate (name/raw strings cannot relocate).`; }
+  }
+}
+
+editArea.addEventListener('input',()=>{
+  if(!current) return;
+  updateLengthMeter(editArea.value.length,current.length);
+  updateInfoBox(editArea.value.length,current.length,current.kind);
+});
+
+// ── Virtual scroll ────────────────────────────────────────────────────
+const ITEM_H=46;
 
 function buildFiltered(){
-  const q = segSearch.value.trim().toLowerCase();
-  if(!q){
-    filteredSegments = segments;
-  } else {
-    filteredSegments = segments.filter(s =>
-      s.text.toLowerCase().includes(q) ||
-      ('0x'+s.offset.toString(16)).includes(q)
-    );
-  }
+  const q=segSearch.value.trim().toLowerCase();
+  filtered=q?segments.filter(s=>s.text.toLowerCase().includes(q)||
+    (s.kind==='literal'?('0x'+s.ptrOff.toString(16)).includes(q):('0x'+s.offset.toString(16)).includes(q))):segments;
 }
 
 function renderVirtual(){
-  const listH = segList.clientHeight || 380;
-  const totalH = filteredSegments.length * ITEM_H;
-  const scrollTop = segList.scrollTop;
-  const startIdx = Math.max(0, Math.floor(scrollTop / ITEM_H) - 2);
-  const visible   = Math.ceil(listH / ITEM_H) + 4;
-  const endIdx    = Math.min(filteredSegments.length, startIdx + visible);
+  const listH=segListEl.clientHeight||370;
+  const totalH=filtered.length*ITEM_H;
+  const scrollTop=segListEl.scrollTop;
+  const start=Math.max(0,Math.floor(scrollTop/ITEM_H)-2);
+  const end=Math.min(filtered.length,start+Math.ceil(listH/ITEM_H)+4);
 
-  // Spacer approach — one inner div with full height, positioned items
-  let inner = segList._inner;
+  let inner=segListEl._inner;
   if(!inner){
-    segList.innerHTML = '';
-    inner = document.createElement('div');
-    inner.style.cssText = 'position:relative;';
-    segList.appendChild(inner);
-    segList._inner = inner;
-    segList.addEventListener('scroll', ()=> renderVirtual(), {passive:true});
+    segListEl.innerHTML='';
+    inner=document.createElement('div');
+    inner.style.cssText='position:relative;';
+    segListEl.appendChild(inner);
+    segListEl._inner=inner;
+    segListEl.addEventListener('scroll',renderVirtual,{passive:true});
   }
-  inner.style.height = totalH + 'px';
+  inner.style.height=totalH+'px';
 
-  // Remove nodes outside window
-  const toRemove = [];
-  for(const ch of inner.children){
-    const idx = parseInt(ch.dataset.idx);
-    if(idx < startIdx || idx >= endIdx) toRemove.push(ch);
+  // remove out-of-view nodes
+  for(const ch of [...inner.children]){
+    const idx=parseInt(ch.dataset.idx);
+    if(idx<start||idx>=end) inner.removeChild(ch);
   }
-  toRemove.forEach(ch => inner.removeChild(ch));
+  const rendered=new Set([...inner.children].map(ch=>parseInt(ch.dataset.idx)));
 
-  // Track which indexes are already rendered
-  const rendered = new Set();
-  for(const ch of inner.children) rendered.add(parseInt(ch.dataset.idx));
-
-  for(let idx = startIdx; idx < endIdx; idx++){
+  for(let idx=start;idx<end;idx++){
     if(rendered.has(idx)) continue;
-    const s = filteredSegments[idx];
-    const el = document.createElement('div');
-    el.className = 'seg-item' + (current===s?' sel':'') + (modifiedOffsets.has(s.offset)?' modified':'');
-    el.dataset.idx = idx;
-    el.style.cssText = `position:absolute;top:${idx*ITEM_H}px;left:0;right:0;height:${ITEM_H}px;`;
-    el.innerHTML =
-      `<div class="seg-offset">0x${s.offset.toString(16)} <span style="color:var(--muted)">len:${s.length}</span>`+
-      (modifiedOffsets.has(s.offset)?` <span style="color:var(--warn)">✎</span>`:'')+
+    const s=filtered[idx];
+    const isSel=current===s, isMod=modSet.has(s.key), isRel=relocSet.has(s.key);
+    const el=document.createElement('div');
+    el.className='seg-item'+(isSel?' sel':'')+(isRel?' relocated':isMod?' modified':'');
+    el.dataset.idx=idx;
+    el.style.cssText=`position:absolute;top:${idx*ITEM_H}px;left:0;right:0;height:${ITEM_H}px;`;
+    const badge=s.kind==='literal'?`<span style="color:var(--accent);font-size:9px;font-family:'JetBrains Mono',monospace">LIT</span>`:
+                s.kind==='name'?`<span style="color:var(--accent2);font-size:9px;font-family:'JetBrains Mono',monospace">NAME</span>`:
+                `<span style="color:var(--muted);font-size:9px;font-family:'JetBrains Mono',monospace">RAW</span>`;
+    const addr=s.kind==='literal'?`0x${s.ptrOff.toString(16)}`:`0x${s.offset.toString(16)}`;
+    el.innerHTML=`<div class="seg-offset">${badge} ${addr} <span style="color:var(--muted)">len:${s.length}</span>`+
+      (isRel?` <span style="color:var(--accent)">↑ relocated</span>`:isMod?` <span style="color:var(--warn)">✎</span>`:'')+
       `</div><div class="seg-text">${escHtml(s.text)}</div>`;
-    el.onclick = () => selectSegment(s);
+    el.onclick=()=>selectSegment(s);
     inner.appendChild(el);
   }
-
-  if(filteredSegments.length === 0){
-    inner.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;position:absolute;top:0;left:0;right:0">No strings match</div>';
+  if(filtered.length===0){
+    inner.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;position:absolute;top:0;left:0;right:0">No strings match</div>';
   }
 }
 
 function render(){ buildFiltered(); renderVirtual(); }
+segSearch.addEventListener('input',render);
 
-function escHtml(s){
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-// ── Select ────────────────────────────────────────────────────────────
-function selectSegment(s){
-  current = s;
-  renderVirtual(); // re-render to update .sel class (no rebuild needed)
-  selMeta.textContent = `Offset: 0x${s.offset.toString(16)} (${s.offset})  •  Max length: ${s.length} bytes`;
-  editArea.value = s.text;
-  editArea.disabled = false;
-  btnApply.disabled = false;
-  btnRevert.disabled = !modifiedOffsets.has(s.offset);
-  fullPreview.textContent = s.text;
-  updateLengthMeter(s.text.length, s.length);
-}
-
-// ── Length meter ──────────────────────────────────────────────────────
-function updateLengthMeter(cur, max){
-  if(max === 0){ lenText.textContent='0 / 0'; lenBar.style.width='0%'; return; }
-  const pct = Math.min(100, (cur/max)*100);
-  lenBar.style.width = pct+'%';
-  lenBar.style.background = cur>max ? 'var(--danger)' : cur/max>0.9 ? 'var(--warn)' : 'var(--accent)';
-  lenText.textContent = `${cur} / ${max}`;
-  lenText.className = 'len-text'+(cur>max?' len-over':cur/max>0.9?' len-warn':'');
-}
-
-editArea.addEventListener('input', ()=>{
-  if(!current) return;
-  const newLen = editArea.value.length;
-  updateLengthMeter(newLen, current.length);
-  const diff = newLen - current.length;
-  if(diff > 0){
-    warnBox.className = 'warning-box show';
-    warnBox.textContent = `⚠ New text is ${diff} byte(s) too long. It will be truncated to fit the original slot (${current.length} bytes). This prevents file corruption.`;
-  } else if(diff < 0){
-    warnBox.className = 'warning-box show';
-    warnBox.style.background = 'rgba(52,211,153,0.04)';
-    warnBox.style.borderColor = 'rgba(52,211,153,0.2)';
-    warnBox.style.color = 'var(--accent)';
-    warnBox.textContent = `ℹ ${-diff} byte(s) shorter — remaining space will be zero-padded (safe).`;
-  } else {
-    warnBox.className = 'warning-box';
-    warnBox.style = '';
-  }
-});
-
-// ── Apply edit (safe in-place) ────────────────────────────────────────
-btnApply.addEventListener('click', ()=>{
-  if(!current || !fileBuffer) return;
-  const newText = editArea.value;
-  // Truncate to max length SILENTLY (we already warned the user via the meter)
-  const safeText = newText.slice(0, current.length);
-  // Write in-place — fills remainder with 0x00
-  writeStringInPlace(fileBuffer, current.offset, current.length, safeText);
-  // Update segment's live text by re-reading from buffer
-  current.text = readString(fileBuffer, current.offset, current.length).replace(/\x00+$/, '');
-  // Update the displayed value to show the (possibly truncated) result
-  editArea.value = current.text;
-  // Track modification
-  modifiedOffsets.add(current.offset);
-  fullPreview.textContent = current.text;
-  updateLengthMeter(current.text.length, current.length);
-  btnRevert.disabled = false;
-  updateStats();
-  renderVirtual();
-  setStatus(`Applied edit at 0x${current.offset.toString(16)}.`, 'ok');
-});
-
-// ── Revert single ─────────────────────────────────────────────────────
-btnRevert.addEventListener('click', ()=>{
-  if(!current || !originalBuffer) return;
-  // Restore original bytes for this segment's slot only
-  const orig = originalBuffer.subarray(current.offset, current.offset + current.length);
-  fileBuffer.set(orig, current.offset);
-  current.text = current.origText;
-  editArea.value = current.text;
-  modifiedOffsets.delete(current.offset);
-  fullPreview.textContent = current.text;
-  updateLengthMeter(current.text.length, current.length);
-  btnRevert.disabled = true;
-  updateStats();
-  renderVirtual();
-  setStatus(`Reverted 0x${current.offset.toString(16)} to original.`, 'ok');
-});
-
-// ── Revert all ────────────────────────────────────────────────────────
-btnRevertAll.addEventListener('click', ()=>{
-  if(!originalBuffer) return;
-  if(!confirm('Revert ALL changes to the original file?')) return;
-  fileBuffer = new Uint8Array(originalBuffer);
-  scan();
-  setStatus('All changes reverted.', 'ok');
-});
-
-// ── Download ──────────────────────────────────────────────────────────
-btnDownload.addEventListener('click', ()=>{
-  if(!fileBuffer) return;
-  const blob = new Blob([fileBuffer], {type:'application/octet-stream'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = 'global-metadata.dat';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-  setStatus('File downloaded.', 'ok');
-});
-
-// ── Load file ─────────────────────────────────────────────────────────
-fileInput.addEventListener('change', e=>{
-  const f = e.target.files[0];
-  if(f) loadArrayBuffer(f.arrayBuffer(), f.name, f.size);
-});
-
-async function loadArrayBuffer(promise, name, size){
-  setStatus('Reading…', 'busy');
-  try{
-    const ab = await promise;
-    originalBuffer = new Uint8Array(ab);
-    fileBuffer     = new Uint8Array(ab.slice(0)); // mutable copy
-    statSize.textContent = formatBytes(size ?? ab.byteLength);
-    btnDownload.disabled = false;
-    btnRevertAll.disabled = false;
-    setStatus(`Loaded: ${name} — scanning…`, 'busy');
-    setTimeout(()=>{ scan(); setStatus(`Ready — ${segments.length} strings in ${name}`, 'ok'); }, 10);
-  }catch(err){
-    setStatus('Failed to read file: '+err.message, 'err');
-  }
-}
-
-// ── Fetch URL ─────────────────────────────────────────────────────────
-btnFetchGo.addEventListener('click', async ()=>{
-  const url = fetchUrl.value.trim();
-  if(!url){ setStatus('Please enter a URL.', 'err'); return; }
-  setStatus('Fetching…', 'busy');
-  try{
-    const res = await fetch(url, {cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status+' '+res.statusText);
-    const ab = await res.arrayBuffer();
-    const shortName = url.split('/').pop() || 'fetched-file';
-    await loadArrayBuffer(Promise.resolve(ab), shortName, ab.byteLength);
-  }catch(err){
-    let msg = 'Fetch failed: '+err.message;
-    if(err.name==='TypeError') msg += ' — likely a CORS error. Try downloading the file and loading it locally.';
-    setStatus(msg, 'err');
-  }
-});
-
-// ── Rescan ────────────────────────────────────────────────────────────
-btnRescan.addEventListener('click', scan);
-
-// ── Search ────────────────────────────────────────────────────────────
-segSearch.addEventListener('input', render);
-
-// ── Stats ─────────────────────────────────────────────────────────────
 function updateStats(){
-  statCount.textContent = segments.length;
-  statMod.textContent   = modifiedOffsets.size;
-}
-
-function formatBytes(b){
-  if(b<1024) return b+' B';
-  if(b<1048576) return (b/1024).toFixed(1)+' KB';
-  return (b/1048576).toFixed(2)+' MB';
+  statCount.textContent=segments.length;
+  statMod.textContent=modSet.size;
+  statReloc.textContent=relocSet.size;
 }
 </script>
 </body>
