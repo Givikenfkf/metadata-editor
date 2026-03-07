@@ -109,7 +109,7 @@
     height:380px;overflow-y:auto;
     border-radius:8px;border:1px solid var(--border);
     background:rgba(255,255,255,0.01);
-    padding:4px;
+    position:relative;
   }
   .seg-list::-webkit-scrollbar{width:4px}
   .seg-list::-webkit-scrollbar-track{background:transparent}
@@ -118,7 +118,7 @@
   .seg-item{
     padding:6px 8px;border-radius:6px;cursor:pointer;
     transition:background 0.1s;
-    margin-bottom:2px;
+    overflow:hidden;
   }
   .seg-item:hover{background:rgba(255,255,255,0.04)}
   .seg-item.sel{
@@ -340,31 +340,48 @@ function writeStringInPlace(buf, offset, maxLen, newStr){
   for(let i=writeLen; i<maxLen; i++) buf[offset+i] = 0x00;
 }
 
-// ── Scan ──────────────────────────────────────────────────────────────
-function scan(){
-  if(!fileBuffer){ setStatus('No file loaded.','err'); return; }
-  segments = [];
-  modifiedOffsets.clear();
-  const u8 = fileBuffer;
+// ── Scan (Web Worker so UI never freezes) ─────────────────────────────
+const WORKER_SRC = `
+self.onmessage = function(e){
+  const buf = e.data; // SharedArrayBuffer or transferred ArrayBuffer
+  const u8 = new Uint8Array(buf);
+  const segs = [];
   const minLen = 4;
   let i = 0;
-  while(i < u8.length){
-    if(isPrintable(u8[i])){
+  const total = u8.length;
+  let lastReport = 0;
+  while(i < total){
+    const b = u8[i];
+    if(b >= 32 && b <= 126){
       const start = i;
-      while(i < u8.length && isPrintable(u8[i])) i++;
+      while(i < total && u8[i] >= 32 && u8[i] <= 126) i++;
       const length = i - start;
       if(length >= minLen){
-        const text = readString(u8, start, length);
-        segments.push({ offset:start, length, origText:text, text });
+        // decode latin-1 inline (fast, no TextDecoder overhead in tight loop)
+        let text = '';
+        for(let j=start; j<start+length; j++) text += String.fromCharCode(u8[j]);
+        segs.push([start, length, text]);
       }
     } else {
       i++;
     }
+    // progress every ~5 MB
+    if(i - lastReport > 5000000){
+      lastReport = i;
+      self.postMessage({type:'progress', pct: Math.round(i/total*100)});
+    }
   }
-  setStatus(`Scan complete — ${segments.length} strings found.`, 'ok');
-  updateStats();
-  render();
-  // deselect
+  self.postMessage({type:'done', segs});
+};
+`;
+
+let scanWorker = null;
+
+function scan(){
+  if(!fileBuffer){ setStatus('No file loaded.','err'); return; }
+  segments = [];
+  modifiedOffsets.clear();
+  filteredSegments = [];
   current = null;
   selMeta.textContent = 'Nothing selected — pick a string from the list';
   editArea.value = '';
@@ -373,30 +390,113 @@ function scan(){
   btnApply.disabled = true;
   btnRevert.disabled = true;
   updateLengthMeter(0,0);
+
+  // Kill any previous worker
+  if(scanWorker){ scanWorker.terminate(); scanWorker = null; }
+
+  setStatus('Scanning… 0%', 'busy');
+
+  const blob = new Blob([WORKER_SRC], {type:'application/javascript'});
+  const workerUrl = URL.createObjectURL(blob);
+  scanWorker = new Worker(workerUrl);
+
+  // Transfer a copy so worker owns it (non-blocking transfer)
+  const copy = fileBuffer.buffer.slice(0);
+  scanWorker.onmessage = (e) => {
+    const msg = e.data;
+    if(msg.type === 'progress'){
+      setStatus(`Scanning… ${msg.pct}%`, 'busy');
+    } else if(msg.type === 'done'){
+      URL.revokeObjectURL(workerUrl);
+      scanWorker = null;
+      // Rebuild segment objects from compact arrays
+      segments = msg.segs.map(([offset, length, text]) => ({
+        offset, length, origText: text, text
+      }));
+      setStatus(`Scan complete — ${segments.length} strings found.`, 'ok');
+      updateStats();
+      buildFiltered();
+      renderVirtual();
+    }
+  };
+  scanWorker.onerror = (err) => {
+    setStatus('Scan error: ' + err.message, 'err');
+    URL.revokeObjectURL(workerUrl);
+    scanWorker = null;
+  };
+  scanWorker.postMessage(copy, [copy]);
 }
 
-// ── Render list ───────────────────────────────────────────────────────
-function render(){
-  segList.innerHTML = '';
+// ── Virtual scroll list ───────────────────────────────────────────────
+const ITEM_H = 46; // px per row — must match CSS
+let filteredSegments = [];
+let vsOffset = 0; // scroll top in items
+
+function buildFiltered(){
   const q = segSearch.value.trim().toLowerCase();
-  let shown = 0;
-  for(const s of segments){
-    const hexOff = '0x'+s.offset.toString(16);
-    if(q && !s.text.toLowerCase().includes(q) && !hexOff.includes(q)) continue;
-    shown++;
-    const el = document.createElement('div');
-    el.className = 'seg-item' + (current===s?' sel':'') + (modifiedOffsets.has(s.offset)?' modified':'');
-    el.innerHTML =
-      `<div class="seg-offset">${hexOff} <span style="color:var(--muted)">len:${s.length}</span>`+
-      (modifiedOffsets.has(s.offset)?` <span style="color:var(--warn)">✎ modified</span>`:'')+
-      `</div><div class="seg-text">${escHtml(s.text)}</div>`;
-    el.onclick = () => selectSegment(s, el);
-    segList.appendChild(el);
-  }
-  if(shown === 0){
-    segList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">No strings match</div>';
+  if(!q){
+    filteredSegments = segments;
+  } else {
+    filteredSegments = segments.filter(s =>
+      s.text.toLowerCase().includes(q) ||
+      ('0x'+s.offset.toString(16)).includes(q)
+    );
   }
 }
+
+function renderVirtual(){
+  const listH = segList.clientHeight || 380;
+  const totalH = filteredSegments.length * ITEM_H;
+  const scrollTop = segList.scrollTop;
+  const startIdx = Math.max(0, Math.floor(scrollTop / ITEM_H) - 2);
+  const visible   = Math.ceil(listH / ITEM_H) + 4;
+  const endIdx    = Math.min(filteredSegments.length, startIdx + visible);
+
+  // Spacer approach — one inner div with full height, positioned items
+  let inner = segList._inner;
+  if(!inner){
+    segList.innerHTML = '';
+    inner = document.createElement('div');
+    inner.style.cssText = 'position:relative;';
+    segList.appendChild(inner);
+    segList._inner = inner;
+    segList.addEventListener('scroll', ()=> renderVirtual(), {passive:true});
+  }
+  inner.style.height = totalH + 'px';
+
+  // Remove nodes outside window
+  const toRemove = [];
+  for(const ch of inner.children){
+    const idx = parseInt(ch.dataset.idx);
+    if(idx < startIdx || idx >= endIdx) toRemove.push(ch);
+  }
+  toRemove.forEach(ch => inner.removeChild(ch));
+
+  // Track which indexes are already rendered
+  const rendered = new Set();
+  for(const ch of inner.children) rendered.add(parseInt(ch.dataset.idx));
+
+  for(let idx = startIdx; idx < endIdx; idx++){
+    if(rendered.has(idx)) continue;
+    const s = filteredSegments[idx];
+    const el = document.createElement('div');
+    el.className = 'seg-item' + (current===s?' sel':'') + (modifiedOffsets.has(s.offset)?' modified':'');
+    el.dataset.idx = idx;
+    el.style.cssText = `position:absolute;top:${idx*ITEM_H}px;left:0;right:0;height:${ITEM_H}px;`;
+    el.innerHTML =
+      `<div class="seg-offset">0x${s.offset.toString(16)} <span style="color:var(--muted)">len:${s.length}</span>`+
+      (modifiedOffsets.has(s.offset)?` <span style="color:var(--warn)">✎</span>`:'')+
+      `</div><div class="seg-text">${escHtml(s.text)}</div>`;
+    el.onclick = () => selectSegment(s);
+    inner.appendChild(el);
+  }
+
+  if(filteredSegments.length === 0){
+    inner.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;position:absolute;top:0;left:0;right:0">No strings match</div>';
+  }
+}
+
+function render(){ buildFiltered(); renderVirtual(); }
 
 function escHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -405,7 +505,7 @@ function escHtml(s){
 // ── Select ────────────────────────────────────────────────────────────
 function selectSegment(s){
   current = s;
-  render(); // re-render to update .sel class
+  renderVirtual(); // re-render to update .sel class (no rebuild needed)
   selMeta.textContent = `Offset: 0x${s.offset.toString(16)} (${s.offset})  •  Max length: ${s.length} bytes`;
   editArea.value = s.text;
   editArea.disabled = false;
@@ -463,7 +563,7 @@ btnApply.addEventListener('click', ()=>{
   updateLengthMeter(current.text.length, current.length);
   btnRevert.disabled = false;
   updateStats();
-  render();
+  renderVirtual();
   setStatus(`Applied edit at 0x${current.offset.toString(16)}.`, 'ok');
 });
 
@@ -480,7 +580,7 @@ btnRevert.addEventListener('click', ()=>{
   updateLengthMeter(current.text.length, current.length);
   btnRevert.disabled = true;
   updateStats();
-  render();
+  renderVirtual();
   setStatus(`Reverted 0x${current.offset.toString(16)} to original.`, 'ok');
 });
 
