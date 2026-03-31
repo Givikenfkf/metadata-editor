@@ -70,7 +70,19 @@
   .stats-bar{display:flex;gap:16px;flex-wrap:wrap;padding:8px 12px;border-radius:8px;background:rgba(255,255,255,.01);border:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:10px}
   .stat{display:flex;gap:6px;align-items:center}
   .stat-label{color:var(--muted)}.stat-val{color:var(--accent2)}
-  @media(max-width:860px){.grid{grid-template-columns:1fr}.seg-list{height:240px}}
+  .drop-zone{background:rgba(52,211,153,.05);border:2px dashed rgba(52,211,153,.3);border-radius:12px;padding:40px;text-align:center;color:var(--muted);font-size:14px;margin-bottom:16px;transition:border-color .2s}
+  .drop-zone.dragover{border-color:var(--accent);background:rgba(52,211,153,.1)}
+  .drop-zone.has-file{display:none}
+  @media(max-width:860px){
+    .grid{grid-template-columns:1fr}
+    .seg-list{height:240px}
+    .drop-zone{padding:20px;font-size:12px}
+    .toolbar{flex-wrap:wrap}
+    .btn{font-size:11px;padding:6px 10px}
+    .action-row{flex-direction:column;gap:6px}
+    .action-row .btn{width:100%}
+    .stats-bar{flex-direction:column;gap:8px}
+  }
 </style>
 </head>
 <body>
@@ -85,8 +97,9 @@
 
   <div class="grid">
     <div class="panel">
-      <div class="url-row">
-        <input id="fetchUrl" class="url-input" placeholder="https://example.com/global-metadata.dat" />
+      <div id="dropZone" class="drop-zone">
+        <div>Drop a .dat file here or click to browse</div>
+        <input id="fileInput" type="file" hidden>
       </div>
       <div class="toolbar">
         <label class="btn btn-ghost" style="cursor:pointer">📁 Load File<input id="fileInput" type="file" hidden></label>
@@ -99,6 +112,14 @@
         <span class="mode-badge" id="modeBadge"></span>
       </div>
       <input id="segSearch" class="search-box" placeholder="Search text or 0xoffset…" />
+      <div class="toolbar" style="margin-bottom:8px">
+        <button id="filterAll" class="btn btn-ghost" style="font-size:10px">All</button>
+        <button id="filterLit" class="btn btn-ghost" style="font-size:10px">Literals</button>
+        <button id="filterName" class="btn btn-ghost" style="font-size:10px">Names</button>
+        <button id="filterRaw" class="btn btn-ghost" style="font-size:10px">Raw</button>
+        <button id="filterMod" class="btn btn-ghost" style="font-size:10px">Modified</button>
+        <button id="filterReloc" class="btn btn-ghost" style="font-size:10px;margin-left:auto">Relocated</button>
+      </div>
       <div id="segList" class="seg-list"></div>
       <div class="stats-bar">
         <div class="stat"><span class="stat-label">Strings:</span><span class="stat-val" id="statCount">0</span></div>
@@ -125,7 +146,11 @@
       <div class="action-row">
         <button id="btnApply" class="btn btn-primary" disabled>✓ Apply</button>
         <button id="btnRevert" class="btn btn-ghost" disabled>↺ Revert</button>
+        <button id="btnBatchApply" class="btn btn-primary" disabled>✓ Apply to Selected</button>
+        <button id="btnSelectAll" class="btn btn-ghost">☑ Select All</button>
         <button id="btnDownload" class="btn btn-ghost" disabled>⬇ Download .dat</button>
+        <button id="btnExportJSON" class="btn btn-ghost" disabled>📄 Export JSON</button>
+        <button id="btnHexView" class="btn btn-ghost" disabled>🔍 Hex View</button>
         <button id="btnRevertAll" class="btn btn-danger" disabled>✕ Revert All</button>
       </div>
       <div>
@@ -138,6 +163,7 @@
 
 <script>
 const fileInput    = document.getElementById('fileInput');
+const dropZone     = document.getElementById('dropZone');
 const fetchUrl     = document.getElementById('fetchUrl');
 const btnFetchGo   = document.getElementById('btnFetchGo');
 const btnRescan    = document.getElementById('btnRescan');
@@ -150,17 +176,22 @@ const lenText      = document.getElementById('lenText');
 const infoBox      = document.getElementById('infoBox');
 const btnApply     = document.getElementById('btnApply');
 const btnRevert    = document.getElementById('btnRevert');
-const btnDownload  = document.getElementById('btnDownload');
-const btnRevertAll = document.getElementById('btnRevertAll');
+const btnBatchApply = document.getElementById('btnBatchApply');
+const btnSelectAll = document.getElementById('btnSelectAll');
+const btnExportJSON = document.getElementById('btnExportJSON');
+const btnExportCSV  = document.getElementById('btnExportCSV');
+const btnHexView    = document.getElementById('btnHexView');
 const fullPreview  = document.getElementById('fullPreview');
 const statusDot    = document.getElementById('statusDot');
 const statusText   = document.getElementById('statusText');
 const modeBadge    = document.getElementById('modeBadge');
 const editModeTag  = document.getElementById('editModeTag');
-const statCount    = document.getElementById('statCount');
-const statMod      = document.getElementById('statMod');
-const statReloc    = document.getElementById('statReloc');
-const statSize     = document.getElementById('statSize');
+const filterAll    = document.getElementById('filterAll');
+const filterLit    = document.getElementById('filterLit');
+const filterName   = document.getElementById('filterName');
+const filterRaw    = document.getElementById('filterRaw');
+const filterMod    = document.getElementById('filterMod');
+const filterReloc  = document.getElementById('filterReloc');
 
 // ── State ─────────────────────────────────────────────────────────────
 let origBytes  = null;   // immutable original
@@ -171,6 +202,8 @@ let filtered   = [];
 let current    = null;
 let modSet     = new Set();
 let relocSet   = new Set();
+let selectedSet = new Set();
+let currentFilter = 'all';
 
 // ── Helpers ───────────────────────────────────────────────────────────
 function setStatus(msg, state){
@@ -441,8 +474,97 @@ btnDownload.addEventListener('click',()=>{
   setStatus('Downloaded','ok');
 });
 
+btnExportJSON.addEventListener('click',()=>{
+  if(!segments.length) return;
+  const data = segments.map(s=>({
+    kind: s.kind,
+    offset: s.kind==='literal' ? s.ptrOff : s.offset,
+    length: s.length,
+    text: s.text,
+    modified: modSet.has(s.key),
+    relocated: relocSet.has(s.key)
+  }));
+  const json = JSON.stringify(data, null, 2);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
+  a.download='strings.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setStatus('Exported JSON','ok');
+});
+btnHexView.addEventListener('click',()=>{
+  if(!buf) return;
+  let hex = '';
+  for(let i=0;i<Math.min(buf.length,1024);i++){ // limit to first 1KB for preview
+    if(i%16===0) hex += '\n' + i.toString(16).padStart(8,'0') + ': ';
+    hex += buf[i].toString(16).padStart(2,'0') + ' ';
+  }
+  const win = window.open('', '_blank');
+  win.document.write('<pre>' + escHtml(hex) + '</pre>');
+  win.document.title = 'Hex View';
+  setStatus('Opened hex view','ok');
+});
+btnSelectAll.addEventListener('click',()=>{
+  if(selectedSet.size === filtered.length){
+    selectedSet.clear();
+  } else {
+    filtered.forEach(s=>selectedSet.add(s.key));
+  }
+  updateStats();
+  renderVirtual();
+});
+
+btnBatchApply.addEventListener('click',()=>{
+  if(!selectedSet.size || !editArea.value.trim()) return;
+  const newText = editArea.value;
+  let applied = 0;
+  selectedSet.forEach(key=>{
+    const s = segments.find(seg=>seg.key===key);
+    if(s && s.text !== newText){
+      // Apply the same logic as single apply
+      const newB = strToU8(newText);
+      if(s.kind==='literal'){
+        if(newB.length <= s.length){
+          for(let i=0;i<newB.length;i++) buf[s.dataOff+i]=newB[i];
+          for(let i=newB.length;i<s.length;i++) buf[s.dataOff+i]=0;
+          w32(buf, s.ptrOff+4, newB.length);
+          s.length=newB.length; s.text=newText;
+        } else {
+          // For batch, perhaps skip relocation or truncate
+          const safe = newText.slice(0,s.length);
+          const safeB = strToU8(safe);
+          for(let i=0;i<safeB.length;i++) buf[s.dataOff+i]=safeB[i];
+          for(let i=safeB.length;i<s.length;i++) buf[s.dataOff+i]=0;
+          w32(buf, s.ptrOff+4, safeB.length);
+          s.length=safeB.length; s.text=safe;
+        }
+      } else {
+        const safe = newText.slice(0,s.length);
+        const safeB = strToU8(safe);
+        for(let i=0;i<safeB.length;i++) buf[s.offset+i]=safeB[i];
+        if(s.kind==='name') buf[s.offset+safeB.length]=0;
+        else for(let i=safeB.length;i<s.length;i++) buf[s.offset+i]=0;
+        s.text=safe;
+      }
+      modSet.add(s.key);
+      applied++;
+    }
+  });
+  selectedSet.clear();
+  updateStats();
+  buildFiltered();
+  renderVirtual();
+  setStatus(`Batch applied to ${applied} strings`,'ok');
+});
+
 // ── Load ──────────────────────────────────────────────────────────────
-fileInput.addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadAB(f.arrayBuffer(),f.name); });
+fileInput.addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadFile(f); });
+dropZone.addEventListener('click',()=>fileInput.click());
+dropZone.addEventListener('dragover',e=>{e.preventDefault(); dropZone.classList.add('dragover');});
+dropZone.addEventListener('dragleave',e=>{e.preventDefault(); dropZone.classList.remove('dragover');});
+dropZone.addEventListener('drop',e=>{
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  const f=e.dataTransfer.files[0]; if(f) loadFile(f);
+});
 btnFetchGo.addEventListener('click',async()=>{
   const url=fetchUrl.value.trim();
   if(!url){setStatus('Enter a URL','err');return;}
@@ -455,6 +577,11 @@ btnFetchGo.addEventListener('click',async()=>{
 });
 btnRescan.addEventListener('click',scan);
 
+function loadFile(f){
+  dropZone.classList.add('has-file');
+  loadAB(f.arrayBuffer(),f.name);
+}
+
 async function loadAB(promise, name){
   setStatus('Reading…','busy');
   try{
@@ -463,7 +590,7 @@ async function loadAB(promise, name){
     origBytes=new Uint8Array(new Uint8Array(ab)); // copy via typed array (fast, non-blocking path)
     buf=new Uint8Array(ab);  // take ownership of original
     statSize.textContent=fmtBytes(ab.byteLength);
-    btnDownload.disabled=false; btnRevertAll.disabled=false;
+    btnDownload.disabled=false; btnExportJSON.disabled=false; btnExportCSV.disabled=false; btnHexView.disabled=false; btnRevertAll.disabled=false;
     setStatus(`Loaded ${name} (${fmtBytes(ab.byteLength)})`,'busy');
     setTimeout(scan,10);
   }catch(err){ setStatus('Read error: '+err.message,'err'); }
@@ -524,8 +651,16 @@ const ITEM_H=46;
 
 function buildFiltered(){
   const q=segSearch.value.trim().toLowerCase();
-  filtered=q?segments.filter(s=>s.text.toLowerCase().includes(q)||
-    (s.kind==='literal'?('0x'+s.ptrOff.toString(16)).includes(q):('0x'+s.offset.toString(16)).includes(q))):segments;
+  let segs = segments;
+  if(currentFilter !== 'all'){
+    if(currentFilter === 'lit') segs = segments.filter(s=>s.kind==='literal');
+    else if(currentFilter === 'name') segs = segments.filter(s=>s.kind==='name');
+    else if(currentFilter === 'raw') segs = segments.filter(s=>s.kind==='raw');
+    else if(currentFilter === 'mod') segs = segments.filter(s=>modSet.has(s.key));
+    else if(currentFilter === 'reloc') segs = segments.filter(s=>relocSet.has(s.key));
+  }
+  filtered=q?segs.filter(s=>s.text.toLowerCase().includes(q)||
+    (s.kind==='literal'?('0x'+s.ptrOff.toString(16)).includes(q):('0x'+s.offset.toString(16)).includes(q))):segs;
 }
 
 function renderVirtual(){
@@ -555,8 +690,7 @@ function renderVirtual(){
 
   for(let idx=start;idx<end;idx++){
     if(rendered.has(idx)) continue;
-    const s=filtered[idx];
-    const isSel=current===s, isMod=modSet.has(s.key), isRel=relocSet.has(s.key);
+    const isSel=current===s, isMod=modSet.has(s.key), isRel=relocSet.has(s.key), isChecked=selectedSet.has(s.key);
     const el=document.createElement('div');
     el.className='seg-item'+(isSel?' sel':'')+(isRel?' relocated':isMod?' modified':'');
     el.dataset.idx=idx;
@@ -565,10 +699,13 @@ function renderVirtual(){
                 s.kind==='name'?`<span style="color:var(--accent2);font-size:9px;font-family:'JetBrains Mono',monospace">NAME</span>`:
                 `<span style="color:var(--muted);font-size:9px;font-family:'JetBrains Mono',monospace">RAW</span>`;
     const addr=s.kind==='literal'?`0x${s.ptrOff.toString(16)}`:`0x${s.offset.toString(16)}`;
-    el.innerHTML=`<div class="seg-offset">${badge} ${addr} <span style="color:var(--muted)">len:${s.length}</span>`+
+    el.innerHTML=`<input type="checkbox" style="margin-right:6px" ${isChecked?'checked':''} onchange="toggleSelect('${s.key}')">`+
+      `<div class="seg-offset">${badge} ${addr} <span style="color:var(--muted)">len:${s.length}</span>`+
       (isRel?` <span style="color:var(--accent)">↑ relocated</span>`:isMod?` <span style="color:var(--warn)">✎</span>`:'')+
       `</div><div class="seg-text">${escHtml(s.text)}</div>`;
-    el.onclick=()=>selectSegment(s);
+    el.onclick=(e)=>{
+      if(e.target.type!=='checkbox') selectSegment(s);
+    };
     inner.appendChild(el);
   }
   if(filtered.length===0){
@@ -579,10 +716,37 @@ function renderVirtual(){
 function render(){ buildFiltered(); renderVirtual(); }
 segSearch.addEventListener('input',render);
 
+filterAll.addEventListener('click',()=>{currentFilter='all'; updateFilterButtons(); render();});
+filterLit.addEventListener('click',()=>{currentFilter='lit'; updateFilterButtons(); render();});
+filterName.addEventListener('click',()=>{currentFilter='name'; updateFilterButtons(); render();});
+filterRaw.addEventListener('click',()=>{currentFilter='raw'; updateFilterButtons(); render();});
+filterMod.addEventListener('click',()=>{currentFilter='mod'; updateFilterButtons(); render();});
+filterReloc.addEventListener('click',()=>{currentFilter='reloc'; updateFilterButtons(); render();});
+
+function updateFilterButtons(){
+  [filterAll,filterLit,filterName,filterRaw,filterMod,filterReloc].forEach(btn=>{
+    btn.className = btn.className.replace(' btn-primary','').replace(' btn-ghost','') + ' btn-ghost';
+  });
+  if(currentFilter==='all') filterAll.className = filterAll.className.replace(' btn-ghost',' btn-primary');
+  else if(currentFilter==='lit') filterLit.className = filterLit.className.replace(' btn-ghost',' btn-primary');
+  else if(currentFilter==='name') filterName.className = filterName.className.replace(' btn-ghost',' btn-primary');
+  else if(currentFilter==='raw') filterRaw.className = filterRaw.className.replace(' btn-ghost',' btn-primary');
+  else if(currentFilter==='mod') filterMod.className = filterMod.className.replace(' btn-ghost',' btn-primary');
+  else if(currentFilter==='reloc') filterReloc.className = filterReloc.className.replace(' btn-ghost',' btn-primary');
+}
+
 function updateStats(){
   statCount.textContent=segments.length;
   statMod.textContent=modSet.size;
   statReloc.textContent=relocSet.size;
+  btnBatchApply.disabled = selectedSet.size === 0;
+}
+
+function toggleSelect(key){
+  if(selectedSet.has(key)) selectedSet.delete(key);
+  else selectedSet.add(key);
+  updateStats();
+  renderVirtual();
 }
 </script>
 </body>

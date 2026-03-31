@@ -1,1 +1,1 @@
-read the title
+Cant use discord btw.. slowfox..
