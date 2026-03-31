@@ -181,7 +181,7 @@ function r32(u8, o){ return ((u8[o]|(u8[o+1]<<8)|(u8[o+2]<<16)|(u8[o+3]<<24))>>>
 function w32(u8, o, v){
   v=v>>>0; u8[o]=v&0xFF; u8[o+1]=(v>>8)&0xFF; u8[o+2]=(v>>16)&0xFF; u8[o+3]=(v>>24)&0xFF;
 }
-function strToU8(s){ const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i)&0xFF; return a; }
+function strToU8(s){ return new TextEncoder('utf-8').encode(s); }
 function u8ToStr(u8, off, len){ let s=''; for(let i=0;i<len;i++) s+=String.fromCharCode(u8[off+i]); return s; }
 function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtBytes(b){ return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB'; }
@@ -190,7 +190,7 @@ function fmtBytes(b){ return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(
 
 // ── Worker ────────────────────────────────────────────────────────────
 const WORKER_JS = `
-const dec = new TextDecoder('latin1');
+const dec = new TextDecoder('utf-8');
 function r32(u8,o){return((u8[o]|(u8[o+1]<<8)|(u8[o+2]<<16)|(u8[o+3]<<24))>>>0);}
 // Fast decode using TextDecoder — O(n) not O(n^2)
 function rd(u8,off,len){ return dec.decode(u8.subarray(off,off+len)); }
@@ -265,12 +265,19 @@ self.onmessage = function(e){
   const segs=[];
   let i=0,last=0;
   while(i<total){
-    if(u8[i]>=32&&u8[i]<=126){
+    if(u8[i] >= 32 || (u8[i] & 0x80)){
       const s=i;
-      while(i<total&&u8[i]>=32&&u8[i]<=126)i++;
+      while(i<total && (u8[i] >= 32 || (u8[i] & 0x80)) && i-s < 4096) i++;
       const l=i-s;
-      // Use TextDecoder — avoids O(n^2) string concat
-      if(l>=4&&l<=4096) segs.push({kind:'raw',offset:s,length:l,text:rd(u8,s,l)});
+      // Use TextDecoder — now UTF-8
+      if(l>=4 && l<=4096){
+        try {
+          const text = rd(u8,s,l);
+          if(text.length > 0) segs.push({kind:'raw',offset:s,length:l,text});
+        } catch(e) {
+          // skip invalid UTF-8 sequences
+        }
+      }
     }else i++;
     if(i-last>4000000){last=i;self.postMessage({type:'progress',pct:Math.round(i/total*100),label:'Raw scan…'});}
   }
